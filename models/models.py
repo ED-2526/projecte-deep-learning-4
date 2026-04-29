@@ -1,24 +1,112 @@
+import torch
 import torch.nn as nn
+import torchvision.models as models
 
-# Conventional and convolutional neural network
+# ============================================================
+# ENCODER: CNN que llegeix la imatge i la converteix en vector
+# ============================================================
 
-class ConvNet(nn.Module):
-    def __init__(self, kernels, classes=10):
-        super(ConvNet, self).__init__()
+class MoleculeEncoder(nn.Module):
+    def __init__(self, embed_dim=256):
+        super().__init__()
         
-        self.layer1 = nn.Sequential(
-            nn.Conv2d(1, kernels[0], kernel_size=5, stride=1, padding=2),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2))
-        self.layer2 = nn.Sequential(
-            nn.Conv2d(16, kernels[1], kernel_size=5, stride=1, padding=2),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2))
-        self.fc = nn.Linear(7 * 7 * kernels[-1], classes)
+        # Usem ResNet18 preentrenat a ImageNet
+        # (ja sap reconèixer formes, vores, textures)
+        resnet = models.resnet18(weights='IMAGENET1K_V1')
         
-    def forward(self, x):
-        out = self.layer1(x)
-        out = self.layer2(out)
-        out = out.reshape(out.size(0), -1)
-        out = self.fc(out)
-        return out
+        # Adaptem la primera capa per imatges en grisos (1 canal)
+        # ResNet original espera 3 canals (RGB), nosaltres tenim 1
+        resnet.conv1 = nn.Conv2d(1, 64, kernel_size=7, 
+                                  stride=2, padding=3, bias=False)
+        
+        # Traiem l'última capa (classificació de 1000 classes d'ImageNet)
+        # Ens quedem tot menys l'últim fc
+        self.backbone = nn.Sequential(*list(resnet.children())[:-1])
+        
+        # Afegim una capa per reduir de 512 a embed_dim
+        self.fc = nn.Linear(512, embed_dim)
+        self.relu = nn.ReLU()
+        
+    def forward(self, images):
+        features = self.backbone(images)
+        features = features.squeeze(-1).squeeze(-1)  # (batch, 512)
+        features = self.relu(self.fc(features))       # (batch, embed_dim=256)
+        return features
+
+
+# ============================================================
+# DECODER: LSTM que genera el text caràcter a caràcter
+# ============================================================
+
+class MoleculeDecoder(nn.Module):
+    def __init__(self, vocab_size, embed_dim=256, hidden_dim=512):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+        self.lstm = nn.LSTM(embed_dim, hidden_dim,
+                            batch_first=True, num_layers=1)
+        self.fc = nn.Linear(hidden_dim, vocab_size)
+        self.dropout = nn.Dropout(0.3)
+        # Projecta el context de la imatge a hidden_dim per inicialitzar la LSTM
+        self.img2hidden = nn.Linear(embed_dim, hidden_dim)
+        
+    def forward(self, features, captions):
+        embeddings = self.embedding(captions[:, :-1])  # (batch, seq_len-1, embed_dim)
+
+        batch_size = features.size(0)
+        # Usem la imatge com a h0 de la LSTM (estat inicial)
+        h0 = self.img2hidden(features).unsqueeze(0)    # (1, batch, hidden_dim)
+        c0 = torch.zeros(1, batch_size, 512).to(features.device)
+
+        out, _ = self.lstm(embeddings, (h0, c0))       # (batch, seq_len-1, hidden_dim)
+        out = self.dropout(out)
+        return self.fc(out)                             # (batch, seq_len-1, vocab_size)
+
+
+# ============================================================
+# MODEL COMPLET: Encoder + Decoder junts
+# ============================================================
+
+class MoleculeModel(nn.Module):
+    def __init__(self, vocab_size, embed_dim=256, hidden_dim=512):
+        super().__init__()
+        self.encoder = MoleculeEncoder(embed_dim)
+        self.decoder = MoleculeDecoder(vocab_size, embed_dim, hidden_dim)
+        
+    def forward(self, images, captions):
+        features = self.encoder(images)
+        return self.decoder(features, captions)
+    
+    def generate(self, image, idx2char, max_len=500, device='cuda'):
+        """Genera text a partir d'una imatge (inferència)"""
+        self.eval()
+        with torch.no_grad():
+            features = self.encoder(image.unsqueeze(0).to(device))
+            
+            # Comencem amb el token <SOS>
+            token = torch.tensor([[1]]).to(device)  # 1 = <SOS>
+            h = torch.zeros(1, 1, 512).to(device)
+            c = torch.zeros(1, 1, 512).to(device)
+            
+            result = []
+            img_injected = False
+            
+            for _ in range(max_len):
+                emb = self.decoder.embedding(token)  # (1, 1, embed_dim)
+                
+                if not img_injected:
+                    emb = features.unsqueeze(1)
+                    img_injected = True
+                
+                out, (h, c) = self.decoder.lstm(emb, (h, c))
+                pred = self.decoder.fc(out.squeeze(1))
+                next_token = pred.argmax(dim=-1)
+                
+                char = idx2char.get(next_token.item(), '')
+                if char == '<EOS>':
+                    break
+                if char not in ['<PAD>', '<SOS>']:
+                    result.append(char)
+                    
+                token = next_token.unsqueeze(0)
+            
+            return ''.join(result)

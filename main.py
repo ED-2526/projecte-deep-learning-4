@@ -1,62 +1,78 @@
-import os
-import random
-import wandb
-
-import numpy as np
 import torch
 import torch.nn as nn
-import torchvision
-import torchvision.transforms as transforms
+import wandb
+import random
+import numpy as np
 
-from train import *
-from test import *
-from utils.utils import *
-from tqdm.auto import tqdm
+from models.models import MoleculeModel
+from utils.utils import make_loaders
+from train import train
 
-# Ensure deterministic behavior
+# Reproduïbilitat
 torch.backends.cudnn.deterministic = True
-random.seed(hash("setting random seeds") % 2**32 - 1)
-np.random.seed(hash("improves reproducibility") % 2**32 - 1)
-torch.manual_seed(hash("by removing stochasticity") % 2**32 - 1)
-torch.cuda.manual_seed_all(hash("so runs are repeatable") % 2**32 - 1)
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)
 
-# Device configuration
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-# remove slow mirror from list of MNIST mirrors
-torchvision.datasets.MNIST.mirrors = [mirror for mirror in torchvision.datasets.MNIST.mirrors
-                                      if not mirror.startswith("http://yann.lecun.com")]
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Usant device: {device}")
 
 
+def model_pipeline(cfg):
+    with wandb.init(project="molecule-recognition", config=cfg):
+        config = wandb.config
 
+        # 1. Carregar dades
+        print("\n--- Carregant dades ---")
+        train_loader, val_loader, vocab_size, idx2char = make_loaders(
+            batch_size=config.batch_size,
+            max_len=config.max_len,
+            img_size=config.img_size
+        )
 
-def model_pipeline(cfg:dict) -> None:
-    # tell wandb to get started
-    with wandb.init(project="pytorch-demo", config=cfg):
-      # access all HPs through wandb.config, so logging matches execution!
-      config = wandb.config
+        # 2. Crear model
+        print("\n--- Creant model ---")
+        model = MoleculeModel(
+            vocab_size=vocab_size,
+            embed_dim=config.embed_dim,
+            hidden_dim=config.hidden_dim
+        ).to(device)
 
-      # make the model, data, and optimization problem
-      model, train_loader, test_loader, criterion, optimizer = make(config,device=device)
+        params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Paràmetres entrenables: {params:,}")
 
-      # and use them to train the model
-      train(model, train_loader, criterion, optimizer, config,device=device)
+        # 3. Loss i optimizer
+        # ignore_index=0 → no penalitza el padding <PAD>
+        criterion = nn.CrossEntropyLoss(ignore_index=0)
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=config.learning_rate
+        )
 
-      # and test its final performance
-      test(model, test_loader,device=device)
+        # 4. Entrenar
+        print("\n--- Iniciant entrenament ---")
+        train(model, train_loader, val_loader, optimizer, criterion,
+              num_epochs=config.epochs,
+              device=device,
+              idx2char=idx2char)
 
     return model
+
 
 if __name__ == "__main__":
     wandb.login()
 
     config = dict(
-        epochs=5,
-        classes=10,
-        kernels=[16, 32],
-        batch_size=128,
-        learning_rate=5e-3,
-        dataset="MNIST",
-        architecture="CNN")
-    model = model_pipeline(config)
+        epochs=20,
+        batch_size=16,
+        learning_rate=1e-3,
+        embed_dim=256,
+        hidden_dim=512,
+        max_len=500,
+        img_size=224,
+        dataset="USPTO-30K-clean",
+        architecture="ResNet18+LSTM"
+    )
 
+    model = model_pipeline(config)
