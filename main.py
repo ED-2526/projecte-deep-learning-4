@@ -36,7 +36,7 @@ def model_pipeline(cfg):
         model = MoleculeModel(
             vocab_size=vocab_size,
             embed_dim=config.embed_dim,
-            hidden_dim=config.hidden_dim
+            hidden_dim=config.hidden_dim   # ← vuelve hidden_dim, quita nhead/num_layers
         ).to(device)
 
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -44,15 +44,16 @@ def model_pipeline(cfg):
 
         # 3. Loss i optimizer
         # ignore_index=0 → no penalitza el padding <PAD>
-        criterion = nn.CrossEntropyLoss(ignore_index=0)
+        criterion = nn.CrossEntropyLoss(ignore_index=0, label_smoothing=0.1)
         optimizer = torch.optim.Adam(
             model.parameters(),
             lr=config.learning_rate
         )
-
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=3, verbose=True)
         # 4. Entrenar
         print("\n--- Iniciant entrenament ---")
-        train(model, train_loader, val_loader, optimizer, criterion,
+        train(model, train_loader, val_loader, optimizer, criterion, scheduler = scheduler,
               num_epochs=config.epochs,
               device=device,
               idx2char=idx2char)
@@ -66,13 +67,13 @@ if __name__ == "__main__":
     config = dict(
         epochs=20,
         batch_size=16,
-        learning_rate=1e-3,
+        learning_rate=5e-4,
         embed_dim=256,
         hidden_dim=512,
-        max_len=500,
+        max_len=120,    
         img_size=224,
-        dataset="USPTO-30K-clean",
-        architecture="ResNet18+LSTM"
+        dataset="USPTO-30K-SMILES",
+        architecture="ResNet18+LSTM+Attention"
     )
 
     model = model_pipeline(config)
