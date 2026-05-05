@@ -8,7 +8,6 @@ from rdkit import Chem
 # ============================================================
 # DATASET: carrega USPTO-30K i converteix imatges i text
 # ============================================================
-
 class MoleculeDataset(Dataset):
     def __init__(self, name_dataset="docling-project/USPTO-30K", split='clean', img_size=224, ):
         """

@@ -37,7 +37,6 @@ class MoleculeEncoder(nn.Module):
 # ============================================================
 # DECODER: LSTM que genera el text caràcter a caràcter
 # ============================================================
-
 class MoleculeDecoder(nn.Module):
     def __init__(self, vocab_size, embed_dim=256, hidden_dim=512):
         super().__init__()
