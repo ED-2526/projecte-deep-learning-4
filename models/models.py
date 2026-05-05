@@ -103,7 +103,7 @@ class MoleculeModel(nn.Module):
                 char = idx2char.get(next_token.item(), '')
                 if char == '<EOS>':
                     break
-                if char not in ['<PAD>', '<SOS>']:
+                if char not in ['<PAD>', '<SOS>']: 
                     result.append(char)
                     
                 token = next_token.unsqueeze(0)
