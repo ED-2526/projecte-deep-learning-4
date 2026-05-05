@@ -3,21 +3,22 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from datasets import load_dataset
 import wandb
+from rdkit import Chem
 
 # ============================================================
 # DATASET: carrega USPTO-30K i converteix imatges i text
 # ============================================================
 
 class MoleculeDataset(Dataset):
-    def __init__(self, split='clean', max_len=500, img_size=224):
+    def __init__(self, name_dataset="docling-project/USPTO-30K", split='clean', img_size=224, ):
         """
         split: 'clean', 'abbreviated' o 'large'
         max_len: longitud màxima del text MolFile (trunca els més llargs)
         img_size: mida de la imatge quadrada
         """
         print(f"Carregant split '{split}'...")
-        self.data = load_dataset("docling-project/USPTO-30K")[split]
-        self.max_len = max_len
+        self.data = load_dataset(name_dataset)[split]
+        # self.max_len = max_len
         
         # Transformació de la imatge:
         # 1. Redimensiona a img_size x img_size (totes han de ser iguals)
@@ -28,6 +29,7 @@ class MoleculeDataset(Dataset):
             transforms.Resize((img_size, img_size)),
             transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor(),
+            # transforms.Lambda(lambda tensor: tensor/255)
             transforms.Normalize(mean=[0.5], std=[0.5])
         ])
         
@@ -35,7 +37,12 @@ class MoleculeDataset(Dataset):
         # El model no treballa amb text directament, sinó amb números
         # Cada caràcter únic del dataset rep un número (índex)
         print("Construint vocabulari...")
-        all_text = [item['mol'] for item in self.data]
+
+        all_text = []
+        self.max_len = 0
+        for item in self.data:
+            self.max_len = max(self.max_len, len(item["mol"]))
+            all_text.append(item['mol'])
         chars = sorted(set(''.join(all_text)))
         
         # Tokens especials:
@@ -50,6 +57,7 @@ class MoleculeDataset(Dataset):
         self.vocab_size = len(self.char2idx)
         print(f"Vocabulari: {self.vocab_size} caràcters únics")
         print(f"Exemples al split: {len(self.data)}")
+        print(f"Mida màxima a {split}: {self.max_len}")
 
     def __len__(self):
         return len(self.data)
@@ -58,7 +66,7 @@ class MoleculeDataset(Dataset):
         item = self.data[idx]
         
         # Processar la imatge
-        image = self.transform(item['image'].convert('RGB'))
+        image = self.transform(item['image'])
         
         # Processar el text: convertir caràcters a índexs numèrics
         mol_text = item['mol'][:self.max_len]  # trunca si és massa llarg
@@ -80,7 +88,6 @@ def make_loaders(batch_size=16, max_len=500, img_size=224):
     
     # Usem el split 'clean' (les molècules més senzilles) per començar
     train_dataset = MoleculeDataset(split='clean', 
-                                     max_len=max_len, 
                                      img_size=img_size)
     
     # Dividim manualment en train (80%) i validació (20%)
@@ -96,14 +103,14 @@ def make_loaders(batch_size=16, max_len=500, img_size=224):
         train_data, 
         batch_size=batch_size, 
         shuffle=True,
-        num_workers=2,
+        num_workers=8,
         pin_memory=True
     )
     val_loader = DataLoader(
         val_data, 
         batch_size=batch_size, 
         shuffle=False,
-        num_workers=2,
+        num_workers=8,
         pin_memory=True
     )
     

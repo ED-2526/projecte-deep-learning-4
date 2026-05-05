@@ -27,7 +27,6 @@ def model_pipeline(cfg):
         print("\n--- Carregant dades ---")
         train_loader, val_loader, vocab_size, idx2char = make_loaders(
             batch_size=config.batch_size,
-            max_len=config.max_len,
             img_size=config.img_size
         )
 
@@ -69,7 +68,6 @@ if __name__ == "__main__":
         learning_rate=1e-3,
         embed_dim=256,
         hidden_dim=512,
-        max_len=500,
         img_size=224,
         dataset="USPTO-30K-clean",
         architecture="ResNet18+LSTM"
