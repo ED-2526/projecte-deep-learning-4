@@ -8,14 +8,15 @@ def train_epoch(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
 
-    for images, captions in tqdm(loader, desc="Training"):
+    for images, captions, true_len in tqdm(loader, desc="Training"):
         images = images.to(device)
         captions = captions.to(device)
+        true_len = true_len.to(device)
 
         optimizer.zero_grad()
 
         # Forward pass
-        outputs = model(images, captions)
+        outputs = model(images, captions, true_len)
         # outputs: (batch, seq_len, vocab_size)
         # captions: (batch, seq_len)
 
@@ -47,11 +48,12 @@ def val_epoch(model, loader, criterion, device):
     total_loss = 0
 
     with torch.no_grad():
-        for images, captions in tqdm(loader, desc="Validation"):
+        for images, captions, true_len in tqdm(loader, desc="Validation"):
             images = images.to(device)
             captions = captions.to(device)
+            true_len = true_len.to(device)
 
-            outputs = model(images, captions)
+            outputs = model(images, captions, true_len)
             batch_size, seq_len, vocab_size = outputs.shape
             target = captions[:, 1:seq_len+1]  # mateixa longitud que outputs
             loss = criterion(
@@ -94,7 +96,9 @@ def train(model, train_loader, val_loader, optimizer, criterion,
 
         # Cada 5 epochs, genera un exemple per veure com va
         if (epoch + 1) % 5 == 0:
-            sample_img = next(iter(val_loader))[0][0]
+            sample = next(iter(val_loader))[0]
+            sample_img = sample[0]
             predicted = model.generate(sample_img, idx2char, device=device)
-            print(f"\n  Exemple generat (primers 200 cars):")
-            print(f"  {predicted[:200]}")
+            print(f"\n  Exemple generat {model.max_len}:")
+            print(f"  {predicted}")
+            # print(f"  {sample[1]}")

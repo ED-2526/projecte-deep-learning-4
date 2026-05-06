@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 # ============================================================
 # ENCODER: CNN que llegeix la imatge i la converteix en vector
@@ -48,7 +49,7 @@ class MoleculeDecoder(nn.Module):
         # Projecta el context de la imatge a hidden_dim per inicialitzar la LSTM
         self.img2hidden = nn.Linear(embed_dim, hidden_dim)
         
-    def forward(self, features, captions):
+    def forward(self, features, captions, true_len):
         embeddings = self.embedding(captions[:, :-1])  # (batch, seq_len-1, embed_dim)
 
         batch_size = features.size(0)
@@ -56,7 +57,10 @@ class MoleculeDecoder(nn.Module):
         h0 = self.img2hidden(features).unsqueeze(0)    # (1, batch, hidden_dim)
         c0 = torch.zeros(1, batch_size, 512).to(features.device)
 
+        # embeddings = pack_padded_sequence(embeddings, true_len.cpu(), batch_first=True,
+                                        #    enforce_sorted=False)
         out, _ = self.lstm(embeddings, (h0, c0))       # (batch, seq_len-1, hidden_dim)
+        # out, size = pad_packed_sequence(out, batch_first=True)
         out = self.dropout(out)
         return self.fc(out)                             # (batch, seq_len-1, vocab_size)
 
@@ -66,16 +70,17 @@ class MoleculeDecoder(nn.Module):
 # ============================================================
 
 class MoleculeModel(nn.Module):
-    def __init__(self, vocab_size, embed_dim=256, hidden_dim=512):
+    def __init__(self, vocab_size, max_len, embed_dim=256, hidden_dim=512):
         super().__init__()
+        self.max_len = max_len
         self.encoder = MoleculeEncoder(embed_dim)
         self.decoder = MoleculeDecoder(vocab_size, embed_dim, hidden_dim)
         
-    def forward(self, images, captions):
+    def forward(self, images, captions, true_len):
         features = self.encoder(images)
-        return self.decoder(features, captions)
+        return self.decoder(features, captions, true_len)
     
-    def generate(self, image, idx2char, max_len=500, device='cuda'):
+    def generate(self, image, idx2char, device='cuda'):
         """Genera text a partir d'una imatge (inferència)"""
         self.eval()
         with torch.no_grad():
@@ -89,7 +94,7 @@ class MoleculeModel(nn.Module):
             result = []
             img_injected = False
             
-            for _ in range(max_len):
+            for _ in range(self.max_len+2):
                 emb = self.decoder.embedding(token)  # (1, 1, embed_dim)
                 
                 if not img_injected:

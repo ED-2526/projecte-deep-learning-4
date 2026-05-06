@@ -25,7 +25,7 @@ def model_pipeline(cfg):
 
         # 1. Carregar dades
         print("\n--- Carregant dades ---")
-        train_loader, val_loader, vocab_size, idx2char = make_loaders(
+        train_loader, val_loader, vocab_size, idx2char, max_len = make_loaders(
             batch_size=config.batch_size,
             img_size=config.img_size
         )
@@ -33,9 +33,10 @@ def model_pipeline(cfg):
         # 2. Crear model
         print("\n--- Creant model ---")
         model = MoleculeModel(
+            max_len=max_len,
             vocab_size=vocab_size,
             embed_dim=config.embed_dim,
-            hidden_dim=config.hidden_dim
+            hidden_dim=config.hidden_dim, 
         ).to(device)
 
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
