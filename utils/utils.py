@@ -1,7 +1,7 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-from datasets import load_dataset
+from torch.utils.data import Dataset, DataLoader #DataLoader gestiona: batching, shuffle, paral·lelisme
+from torchvision import transforms #Eines per preprocessar imatges. resize, normalització, convertir a tensor
+from datasets import load_dataset #Hugging Face datasets. descarrega USPTO-30K
 import wandb
 from rdkit import Chem
 
@@ -53,13 +53,13 @@ class MoleculeDataset(Dataset):
             self.char2idx[c] = i + 3
         
         self.idx2char = {v: k for k, v in self.char2idx.items()}
-        self.vocab_size = len(self.char2idx)
+        self.vocab_size = len(self.char2idx) #Mida del vocabulari
         print(f"Vocabulari: {self.vocab_size} caràcters únics")
         print(f"Exemples al split: {len(self.data)}")
         print(f"Mida màxima a {split}: {self.max_len}")
 
     def __len__(self):
-        return len(self.data)
+        return len(self.data) #quantes mostres/àtoms hi ha
 
     def __getitem__(self, idx):
         item = self.data[idx]
@@ -102,8 +102,8 @@ def make_loaders(batch_size=16, max_len=500, img_size=224):
         train_data, 
         batch_size=batch_size, 
         shuffle=True,
-        num_workers=8,
-        pin_memory=True
+        num_workers=2, #Carrega dades en paral·lel amb 2 processos, sino lent
+        pin_memory=True #Optimitza transferència CPU → GPU
     )
     val_loader = DataLoader(
         val_data, 
