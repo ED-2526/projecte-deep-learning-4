@@ -38,9 +38,9 @@ def train_epoch(model, loader, optimizer, criterion, device):
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
 
         optimizer.step()
-        total_loss += loss.item()
+        total_loss += loss.item() #.item() → converteix tensor a número Python
 
-    return total_loss / len(loader)
+    return total_loss / len(loader) #loss mitjana de l’epoch
 
 
 def val_epoch(model, loader, criterion, device):

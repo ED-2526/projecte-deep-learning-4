@@ -13,6 +13,7 @@ class MoleculeEncoder(nn.Module):
         
         # Usem ResNet18 preentrenat a ImageNet
         # (ja sap reconèixer formes, vores, textures)
+        
         resnet = models.resnet18(weights='IMAGENET1K_V1')
         
         # Adaptem la primera capa per imatges en grisos (1 canal)
@@ -105,11 +106,13 @@ class MoleculeModel(nn.Module):
                 pred = self.decoder.fc(out.squeeze(1))
                 next_token = pred.argmax(dim=-1)
                 
-                char = idx2char.get(next_token.item(), '')
+                char = idx2char.get(next_token.item(), '') #passa de token a caracter
                 if char == '<EOS>':
                     break
-                if char not in ['<PAD>', '<SOS>']:
-                    result.append(char)
+
+                if char not in ['<PAD>', '<SOS>']: #evita tokens inutils
+                    result.append(char) 
+
                     
                 token = next_token.unsqueeze(0)
             

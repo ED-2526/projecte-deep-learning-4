@@ -1,6 +1,6 @@
-import torch
-import torch.nn as nn
-import wandb
+import torch 
+import torch.nn as nn #Submòdul de PyTorch per xarxes neuronals.
+import wandb #Weights & Biases
 import random
 import numpy as np
 
@@ -36,8 +36,8 @@ def model_pipeline(cfg):
             max_len=max_len,
             vocab_size=vocab_size,
             embed_dim=config.embed_dim,
-            hidden_dim=config.hidden_dim, 
-        ).to(device)
+            hidden_dim=config.hidden_dim
+        ).to(device) #Puja model a GPU/CPU
 
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"Paràmetres entrenables: {params:,}")
