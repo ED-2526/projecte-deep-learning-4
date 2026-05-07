@@ -3,7 +3,6 @@ from torch.utils.data import Dataset, DataLoader #DataLoader gestiona: batching,
 from torchvision import transforms #Eines per preprocessar imatges. resize, normalització, convertir a tensor
 from datasets import load_dataset #Hugging Face datasets. descarrega USPTO-30K
 import wandb
-from rdkit import Chem
 
 # ============================================================
 # DATASET: carrega USPTO-30K i converteix imatges i text
@@ -65,10 +64,10 @@ class MoleculeDataset(Dataset):
         item = self.data[idx]
         
         # Processar la imatge
-        image = self.transform(item['image'])
+        image = self.transform(item['image'].convert('RGB'))
         
         # Processar el text: convertir caràcters a índexs numèrics
-        mol_text = item['mol'][:self.max_len]  # trunca si és massa llarg
+        mol_text = item['mol'][:500]  # trunca si és massa llarg
         tokens = (
             [self.char2idx['<SOS>']] +
             [self.char2idx.get(c, 0) for c in mol_text] +
