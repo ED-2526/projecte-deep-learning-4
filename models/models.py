@@ -49,6 +49,7 @@ class MoleculeDecoder(nn.Module):
         self.dropout = nn.Dropout(0.3)
         # Projecta el context de la imatge a hidden_dim per inicialitzar la LSTM
         self.img2hidden = nn.Linear(embed_dim, hidden_dim)
+        self.hidden_dim = hidden_dim
         
     def forward(self, features, captions, true_len):
         embeddings = self.embedding(captions[:, :-1])  # (batch, seq_len-1, embed_dim)
@@ -56,7 +57,7 @@ class MoleculeDecoder(nn.Module):
         batch_size = features.size(0)
         # Usem la imatge com a h0 de la LSTM (estat inicial)
         h0 = self.img2hidden(features).unsqueeze(0)    # (1, batch, hidden_dim)
-        c0 = torch.zeros(1, batch_size, 512).to(features.device)
+        c0 = torch.zeros(1, batch_size, self.hidden_dim).to(features.device)
 
         # embeddings = pack_padded_sequence(embeddings, true_len.cpu(), batch_first=True,
                                         #    enforce_sorted=False)
@@ -89,8 +90,8 @@ class MoleculeModel(nn.Module):
             
             # Comencem amb el token <SOS>
             token = torch.tensor([[1]]).to(device)  # 1 = <SOS>
-            h = torch.zeros(1, 1, 512).to(device)
-            c = torch.zeros(1, 1, 512).to(device)
+            h = self.decoder.img2hidden(features).unsqueeze(0)
+            c = torch.zeros(1, 1, self.decoder.hidden_dim).to(device)
             
             result = []
             img_injected = False

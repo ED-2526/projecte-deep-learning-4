@@ -2,7 +2,11 @@ import torch
 import torch.nn as nn
 import wandb
 from tqdm.auto import tqdm
-
+from rdkit import Chem
+from rdkit.Chem import rdMolDescriptors, DataStructs
+import numpy as np
+from rdkit.Chem.rdFingerprintGenerator import GetMorganGenerator
+_morgan_gen = GetMorganGenerator(radius=2, fpSize=2048)
 
 def train_epoch(model, loader, optimizer, criterion, device):
     model.train()
@@ -96,9 +100,131 @@ def train(model, train_loader, val_loader, optimizer, criterion,
 
         # Cada 5 epochs, genera un exemple per veure com va
         if (epoch + 1) % 5 == 0:
-            sample = next(iter(val_loader))[0]
-            sample_img = sample[0]
-            predicted = model.generate(sample_img, idx2char, device=device)
-            print(f"\n  Exemple generat {model.max_len}:")
-            print(f"  {predicted}")
-            # print(f"  {sample[1]}")
+            print(f"\n  → Avaluant mètriques de molècules...")
+            evaluate_molecules(
+                model, val_loader, idx2char, device,
+                num_samples=64,
+                epoch=epoch + 1,
+            )
+
+
+
+
+
+def compute_fingerprint_tanimoto(smiles_pred, smiles_true):
+    """
+    Calcula la similitud de Tanimoto entre dues molècules via Morgan fingerprints.
+    Retorna:
+      - tanimoto (float): 0.0 si alguna molècula és invàlida
+      - valid_pred (bool): si el SMILES predicat és químicament vàlid
+    """
+    mol_true = Chem.MolFromSmiles(smiles_true)
+    mol_pred = Chem.MolFromSmiles(smiles_pred)
+ 
+    valid_pred = mol_pred is not None
+ 
+    if mol_true is None or mol_pred is None:
+        return 0.0, valid_pred
+    
+    fp_true = _morgan_gen.GetFingerprint(mol_true)
+    fp_pred = _morgan_gen.GetFingerprint(mol_pred)
+    
+    return DataStructs.TanimotoSimilarity(fp_true, fp_pred), valid_pred
+ 
+ 
+def evaluate_molecules(model, loader, idx2char, device, num_samples, epoch=None):
+    """
+    Genera prediccions sobre `num_samples` molècules del loader i calcula:
+      - Tanimoto mitjà
+      - % de SMILES vàlids
+      - Exact match accuracy
+      - Top-k molècules on falla més (menor Tanimoto)
+ 
+    Retorna un dict de mètriques.
+    """
+    model.eval()
+ 
+    results = [] 
+ 
+    samples_done = 0
+    with torch.no_grad():
+        for images, captions, true_len in loader:
+            if samples_done >= num_samples:
+                break
+ 
+            images = images.to(device)
+            captions = captions.to(device)
+ 
+            batch_size = images.size(0)
+            remaining = num_samples - samples_done
+            images = images[:remaining]
+            captions = captions[:remaining]
+            true_len = true_len[:remaining]
+ 
+            for i in range(images.size(0)):
+                pred_smiles = model.generate(images[i], idx2char, device=device)
+ 
+                # Reconstruir el SMILES real des dels tokens
+                tokens = captions[i].cpu().tolist()
+                true_smiles = ''.join(
+                    idx2char.get(t, '')
+                    for t in tokens
+                    if idx2char.get(t, '') not in ['<PAD>', '<SOS>', '<EOS>']
+                )
+ 
+                tanimoto, valid = compute_fingerprint_tanimoto(pred_smiles, true_smiles)
+                exact = (pred_smiles == true_smiles)
+ 
+                results.append({
+                    'true': true_smiles,
+                    'pred': pred_smiles,
+                    'tanimoto': tanimoto,
+                    'valid': valid,
+                    'exact': exact,
+                })
+ 
+            samples_done += images.size(0)
+ 
+    # ---- Agregar mètriques ----
+    tanimotos = [r['tanimoto'] for r in results]
+    valids    = [r['valid']    for r in results]
+    exacts    = [r['exact']    for r in results]
+ 
+    metrics = {
+        'mol/tanimoto_mean':  float(np.mean(tanimotos)),
+        'mol/tanimoto_median': float(np.median(tanimotos)),
+        'mol/valid_pct':      float(np.mean(valids)) * 100,
+        'mol/exact_match_pct': float(np.mean(exacts)) * 100,
+    }
+ 
+    # ---- Pitjors molècules (menor Tanimoto) ----
+    worst = sorted(results, key=lambda x: x['tanimoto'])[:10]
+ 
+    worst_table = wandb.Table(
+        columns=["epoch", "true_smiles", "pred_smiles", "tanimoto", "valid_pred", "exact"]
+    )
+    for r in worst:
+        worst_table.add_data(
+            epoch if epoch is not None else -1,
+            r['true'],
+            r['pred'],
+            round(r['tanimoto'], 4),
+            r['valid'],
+            r['exact'],
+        )
+ 
+    wandb.log({**metrics, "mol/worst_molecules": worst_table})
+ 
+    # ---- Print resum ----
+    print(f"\n  [Mètriques molècules | {len(results)} mostres]")
+    print(f"  Tanimoto mitjà:   {metrics['mol/tanimoto_mean']:.4f}")
+    print(f"  Tanimoto mediana: {metrics['mol/tanimoto_median']:.4f}")
+    print(f"  SMILES vàlids:    {metrics['mol/valid_pct']:.1f}%")
+    print(f"  Exact match:      {metrics['mol/exact_match_pct']:.1f}%")
+    print(f"\n  Top-3 pitjors prediccions:")
+    for r in worst[:3]:
+        print(f"    TRUE: {r['true']}")
+        print(f"    PRED: {r['pred']}  (Tanimoto={r['tanimoto']:.3f}, Vàlid={r['valid']})")
+        print()
+ 
+    return metrics
