@@ -48,6 +48,23 @@ class MoleculeDataset(Dataset):
                 self.data.append({'image': item['image'], 'smiles': smiles})
             print(f"\tMostres vàlides: {len(self.data)} | Descartades: {skipped}")
         
+        elif name_dataset == "docling-project/MolGrapher-Synthetic-300K":
+            # Aquest dataset ja inclou el camp 'smiles' directament.
+            # Els splits oficials són: 'train', 'validation', 'test'
+            raw_data = load_dataset(name_dataset)[split]
+            print("\tLlegint SMILES directament del dataset...")
+            self.data = []
+            skipped = 0
+            for item in raw_data:
+                smiles = item['smiles']
+                # Canonicalitzar amb RDKit per consistència
+                print(smiles)
+                self.data.append({'image': item['image'], 'smiles': smiles})
+            print(f"\tMostres vàlides: {len(self.data)} | Descartades: {skipped}")
+ 
+        else:
+            raise ValueError(f"Dataset no suportat: {name_dataset}")
+        
         # Construir vocabulari de caràcters
         # El model no treballa amb text directament, sinó amb números
         # Cada caràcter únic del dataset rep un número (índex)

@@ -85,8 +85,8 @@ if __name__ == "__main__":
         learning_rate=1e-3,
 
         # Data parameters
-        name_dataset="docling-project/USPTO-30K",
-        split="clean",
+        name_dataset="docling-project/MolGrapher-Synthetic-300K", # "docling-project/USPTO-30K"
+        split="validation", #"clean"
 
         # Notes
         notes="Capes Resnet50 (-1) congelades"
