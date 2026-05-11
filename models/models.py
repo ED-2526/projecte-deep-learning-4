@@ -11,36 +11,29 @@ class MoleculeEncoder(nn.Module):
         super().__init__()
         # Usem ResNet18 preentrenat a ImageNet
         # (ja sap reconèixer formes, vores, textures)
-        if encoder == "Resnet18": 
-            resnet = models.resnet18(weights='IMAGENET1K_V1')
-            # Afegim una capa per reduir de 512 (última capa resnet18) a embed_dim 
-            # (aquesta té Requires_grad=True)
-            self.fc = nn.Linear(512, embed_dim)
-        elif encoder == "Resnet50": 
-            resnet = models.resnet50(weights='IMAGENET1K_V1')
-            # Afegim una capa per reduir de 512 (última capa resnet18) a embed_dim 
-            # (aquesta té Requires_grad=True)
-            self.fc = nn.Linear(2048, embed_dim)
-        else: 
-            resnet = models.resnet101(weights='IMAGENET1K_V1')
-            # Afegim una capa per reduir de 512 (última capa resnet18) a embed_dim 
-            # (aquesta té Requires_grad=True)
-            self.fc = nn.Linear(2048, embed_dim)
+        if encoder == "resnet18": 
+            self.backbone = models.resnet18(weights='IMAGENET1K_V1')
             
-        # Traiem l'última capa (classificació de 1000 classes d'ImageNet)
-        # Ens quedem tot menys l'últim fc
-        self.backbone = nn.Sequential(*list(resnet.children())[:-1])
-
+        elif encoder == "resnet50": 
+            self.backbone = models.resnet50(weights='IMAGENET1K_V1')
+            
+        else: 
+            self.backbone = models.resnet101(weights='IMAGENET1K_V1')
+            
         # Posar Requires_grad=False en totes les capes del backbone (Última)
         for param in self.backbone.parameters(): 
             param.requires_grad_(False)
-        
+
+        # Modificquem l'última capa (classificació de 1000 classes d'ImageNet)
+        # Es passa del nombre de features de la penúltima capa a l'embed_dim nostre
+        self.backbone.fc = nn.Linear(self.backbone.fc.in_features, embed_dim)
         self.relu = nn.ReLU()
         
     def forward(self, images):
-        features = self.backbone(images)                # (batch, 512, 1, 1)
-        features = features.squeeze(-1).squeeze(-1)     # (batch, 512)
-        features = self.relu(self.fc(features))         # (batch, embed_dim=256)
+        features = self.backbone(images)                # (batch, embed_dim=256, 1, 1)
+        features = features.squeeze(-1).squeeze(-1)     # (batch, 256)
+        # features = self.relu(self.fc(features))         # (batch, embed_dim=256)
+        # features = self.fc(features)         # (batch, embed_dim=256)
         return features
 
 # ============================================================
