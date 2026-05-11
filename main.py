@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
     config = dict(
         # Model options
-        encoder="Resnet18",
+        encoder="Resnet50",
         decoder="LSTM",
         embed_dim=256,
         hidden_dim=512,
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         split="clean",
 
         # Notes
-        notes="Capes Resnet18 (-1) congelades"
+        notes="Capes Resnet50 (-1) congelades"
     )
 
     model = model_pipeline(config)

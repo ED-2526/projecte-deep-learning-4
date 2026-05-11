@@ -11,8 +11,17 @@ class MoleculeEncoder(nn.Module):
         super().__init__()
         # Usem ResNet18 preentrenat a ImageNet
         # (ja sap reconèixer formes, vores, textures)
-        resnet = models.resnet18(weights='IMAGENET1K_V1')
-        
+        if encoder == "Resnet18": 
+            resnet = models.resnet18(weights='IMAGENET1K_V1')
+            # Afegim una capa per reduir de 512 (última capa resnet18) a embed_dim 
+            # (aquesta té Requires_grad=True)
+            self.fc = nn.Linear(512, embed_dim)
+        else: 
+            resnet = models.resnet50(weights='IMAGENET1K_V1')
+            # Afegim una capa per reduir de 512 (última capa resnet18) a embed_dim 
+            # (aquesta té Requires_grad=True)
+            self.fc = nn.Linear(2048, embed_dim)
+            
         # Traiem l'última capa (classificació de 1000 classes d'ImageNet)
         # Ens quedem tot menys l'últim fc
         self.backbone = nn.Sequential(*list(resnet.children())[:-1])
@@ -21,9 +30,6 @@ class MoleculeEncoder(nn.Module):
         for param in self.backbone.parameters(): 
             param.requires_grad_(False)
         
-        # Afegim una capa per reduir de 512 (última capa resnet18) a embed_dim 
-        # (aquesta té Requires_grad=True)
-        self.fc = nn.Linear(512, embed_dim)
         self.relu = nn.ReLU()
         
     def forward(self, images):
