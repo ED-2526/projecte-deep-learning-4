@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
     config = dict(
         # Model options
-        encoder="Resnet50",
+        encoder="Resnet101",
         decoder="LSTM",
         embed_dim=256,
         hidden_dim=512,

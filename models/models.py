@@ -16,8 +16,13 @@ class MoleculeEncoder(nn.Module):
             # Afegim una capa per reduir de 512 (última capa resnet18) a embed_dim 
             # (aquesta té Requires_grad=True)
             self.fc = nn.Linear(512, embed_dim)
-        else: 
+        elif encoder == "Resnet50": 
             resnet = models.resnet50(weights='IMAGENET1K_V1')
+            # Afegim una capa per reduir de 512 (última capa resnet18) a embed_dim 
+            # (aquesta té Requires_grad=True)
+            self.fc = nn.Linear(2048, embed_dim)
+        else: 
+            resnet = models.resnet101(weights='IMAGENET1K_V1')
             # Afegim una capa per reduir de 512 (última capa resnet18) a embed_dim 
             # (aquesta té Requires_grad=True)
             self.fc = nn.Linear(2048, embed_dim)
