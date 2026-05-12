@@ -24,12 +24,24 @@ class MoleculeDataset(Dataset):
         # 2. Converteix a escala de grisos (blanc i negre)
         # 3. Converteix a tensor PyTorch
         # 4. Normalitza els píxels (millora l'entrenament)
-        self.transform = transforms.Compose([
+        
+        self.transform_train = transforms.Compose([
+            transforms.Resize((img_size, img_size)),
+            transforms.Grayscale(num_output_channels=1),
+            transforms.RandomRotation(degrees=5),
+            transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.449], std=[0.226])  # ← ImageNet per grisos
+        ])
+
+        self.transform_val = transforms.Compose([
             transforms.Resize((img_size, img_size)),
             transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5], std=[0.5])
+            transforms.Normalize(mean=[0.449], std=[0.226])  # ← ImageNet per grisos
         ])
+        
         
         # Convertir MolFiles a SMILES amb RDKit
         print("Convertint MolFiles a SMILES...")
@@ -40,7 +52,7 @@ class MoleculeDataset(Dataset):
             if mol is None:
                 skipped += 1
                 continue
-            smiles = Chem.MolToSmiles(mol)  # SMILES canònic
+            smiles = Chem.MolToSmiles(mol, canonical=True)  # SMILES canònic
             self.data.append({'image': item['image'], 'smiles': smiles})
 
         print(f"Mostres vàlides: {len(self.data)} | Descartades: {skipped}")
@@ -79,7 +91,7 @@ class MoleculeDataset(Dataset):
         item = self.data[idx]
         
         # Processar la imatge
-        image = self.transform(item['image']) 
+        image = self.transform_val(item['image'].convert('RGB')) 
         
         # Processar el text: convertir caràcters a índexs numèrics
         mol_text = item['smiles'] 

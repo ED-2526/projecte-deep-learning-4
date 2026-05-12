@@ -33,10 +33,12 @@ def model_pipeline(cfg):
         # 2. Crear model
         print("\n--- Creant model ---")
         model = MoleculeModel(
-            max_len=max_len,
+            
             vocab_size=vocab_size,
             embed_dim=config.embed_dim,
-            hidden_dim=config.hidden_dim
+            hidden_dim=config.hidden_dim,
+            freeze_resnet=config.freeze_resnet,
+            backbone_name=config.backbone
         ).to(device) #Puja model a GPU/CPU
 
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -49,10 +51,17 @@ def model_pipeline(cfg):
             model.parameters(),
             lr=config.learning_rate
         )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',        # volem minimitzar la val_loss
+            factor=0.5,        # redueix el LR a la meitat
+            patience=3,        # espera 3 epochs sense millora
+            
+        )
 
         # 4. Entrenar
         print("\n--- Iniciant entrenament ---")
-        train(model, train_loader, val_loader, optimizer, criterion,
+        train(model, train_loader, val_loader, optimizer, criterion, scheduler=scheduler,
               num_epochs=config.epochs,
               device=device,
               idx2char=idx2char)
@@ -66,11 +75,14 @@ if __name__ == "__main__":
         epochs=20,
         batch_size=16,
         learning_rate=1e-3,
-        embed_dim=256,
-        hidden_dim=512,
+        embed_dim=256,        # ← prova 128, 256, 512
+        hidden_dim=512,       # ← prova 256, 512, 1024
         img_size=224,
+        freeze_resnet=True,   # ← True=congelat, False=finetuning
+        backbone='resnet18',  # ← 'resnet18', 'resnet34', 'resnet50' 
         dataset="USPTO-30K-clean",
-        architecture="ResNet18+LSTM"
+        architecture="ResNet18+LSTM+Attention"
+        
     )
 
     model = model_pipeline(config)
