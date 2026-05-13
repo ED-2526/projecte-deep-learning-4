@@ -1,73 +1,79 @@
-import torch
-from torch.utils.data import Dataset, DataLoader #DataLoader gestiona: batching, shuffle, paral·lelisme
-from torchvision import transforms #Eines per preprocessar imatges. resize, normalització, convertir a tensor
-from datasets import load_dataset #Hugging Face datasets. descarrega USPTO-30K
 import wandb
+
+from datasets import load_dataset #Hugging Face datasets. descarrega USPTO-30K
+
 from rdkit import Chem #RDKit: processar molècules. convertir MolFiles a SMILES
+import torch
+from torchvision import transforms #Eines per preprocessar imatges
+from torch.utils.data import Dataset, DataLoader #Batching, shuffle, paral·lelisme
 
 
 # ============================================================
-# DATASET: carrega USPTO-30K i converteix imatges i text
+# DATASET: carrega Dataset i converteix imatges i text
 # ============================================================
 class MoleculeDataset(Dataset):
-    def __init__(self, name_dataset="docling-project/USPTO-30K", split='clean', img_size=224, ):
+    def __init__(self, name_dataset, split, img_size=224):
         """
-        split: 'clean', 'abbreviated' o 'large'
+        name_dataset: 'docling-project/USPTO-30K' o 'docling-project/MolGrapher-Synthetic-300K'
+        split: ['clean', 'abbreviated' o 'large'] o ['train', 'test' o 'validation'] 
         img_size: mida de la imatge desitjada
         """
 
-        print(f"Carregant split '{split}'...")
-        raw_data = load_dataset(name_dataset)[split]
+        print(f"Carregant split '{name_dataset}--{split}'...")
         
         # Transformació de la imatge:
         # 1. Redimensiona a img_size x img_size (totes han de ser iguals)
-        # 2. Converteix a escala de grisos (blanc i negre)
+        # 2. Converteix a escala de grisos (blanc i negre) amb 3 canals 
         # 3. Converteix a tensor PyTorch
         # 4. Normalitza els píxels (millora l'entrenament)
-        
-        self.transform_train = transforms.Compose([
+        self.transform = transforms.Compose([
             transforms.Resize((img_size, img_size)),
-            transforms.Grayscale(num_output_channels=1),
-            transforms.RandomRotation(degrees=5),
-            transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2),
+            transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.449], std=[0.226])  # ← ImageNet per grisos
-        ])
-
-        self.transform_val = transforms.Compose([
-            transforms.Resize((img_size, img_size)),
-            transforms.Grayscale(num_output_channels=1),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.449], std=[0.226])  # ← ImageNet per grisos
+            transforms.Normalize(mean=[0.5], std=[0.5])
         ])
         
+        if name_dataset=="docling-project/USPTO-30K": 
+            raw_data = load_dataset(name_dataset)[split]
+            # Convertir MolFiles a SMILES amb RDKit
+            print("\tConvertint MolFiles a SMILES...")
+            self.data = []
+            skipped = 0
+            for item in raw_data:
+                mol = Chem.MolFromMolBlock(item['mol'])
+                if mol is None:
+                    skipped += 1
+                    continue
+                smiles = Chem.MolToSmiles(mol)  # SMILES canònic
+                self.data.append({'image': item['image'], 'smiles': smiles})
+            print(f"\tMostres vàlides: {len(self.data)} | Descartades: {skipped}")
         
-        # Convertir MolFiles a SMILES amb RDKit
-        print("Convertint MolFiles a SMILES...")
-        self.data = []
-        skipped = 0
-        for item in raw_data:
-            mol = Chem.MolFromMolBlock(item['mol'])
-            if mol is None:
-                skipped += 1
-                continue
-            smiles = Chem.MolToSmiles(mol, canonical=True)  # SMILES canònic
-            self.data.append({'image': item['image'], 'smiles': smiles})
-
-        print(f"Mostres vàlides: {len(self.data)} | Descartades: {skipped}")
+        elif name_dataset == "docling-project/MolGrapher-Synthetic-300K":
+            # Aquest dataset ja inclou el camp 'smiles' directament.
+            # Els splits oficials són: 'train', 'validation', 'test'
+            raw_data = load_dataset(name_dataset)[split]
+            print("\tLlegint SMILES directament del dataset...")
+            self.data = []
+            skipped = 0
+            for item in raw_data:
+                smiles = item['smiles']
+                # Canonicalitzar amb RDKit per consistència
+                print(smiles)
+                self.data.append({'image': item['image'], 'smiles': smiles})
+            print(f"\tMostres vàlides: {len(self.data)} | Descartades: {skipped}")
+ 
+        else:
+            raise ValueError(f"Dataset no suportat: {name_dataset}")
         
         # Construir vocabulari de caràcters
         # El model no treballa amb text directament, sinó amb números
         # Cada caràcter únic del dataset rep un número (índex)
         print("Construint vocabulari...")
-
         all_text = []
         self.max_len = 0
         for item in self.data:
             self.max_len = max(self.max_len, len(item["smiles"]))
             all_text.append(item['smiles'])
-        
         chars = sorted(set(''.join(all_text)))
         
         # Tokens especials:
@@ -81,8 +87,8 @@ class MoleculeDataset(Dataset):
         self.idx2char = {v: k for k, v in self.char2idx.items()}
         self.vocab_size = len(self.char2idx) #Mida del vocabulari
         print(f"Vocabulari: {self.vocab_size} caràcters únics")
-        print(f"Exemples al split: {len(self.data)}")
-        print(f"Mida màxima a {split}: {self.max_len}")
+        print(f"Exemples al {name_dataset}--{split}: {len(self.data)}")
+        print(f"Mida màxima al {name_dataset}--{split}: {self.max_len}")
 
     def __len__(self):
         return len(self.data) #quantes mostres/àtoms hi ha
@@ -91,7 +97,7 @@ class MoleculeDataset(Dataset):
         item = self.data[idx]
         
         # Processar la imatge
-        image = self.transform_val(item['image'].convert('RGB')) 
+        image = self.transform(item['image']) 
         
         # Processar el text: convertir caràcters a índexs numèrics
         mol_text = item['smiles'] 
@@ -108,12 +114,11 @@ class MoleculeDataset(Dataset):
         return image, torch.tensor(tokens, dtype=torch.long), len(item["smiles"])
 
 
-def make_loaders(batch_size=16, max_len=500, img_size=224):
+def make_loaders(name_dataset, split, batch_size=16, img_size=224):
     """Crea els DataLoaders de train i validació"""
     
     # Usem el split 'clean' (les molècules més senzilles) per començar
-    train_dataset = MoleculeDataset(split='clean', 
-                                     img_size=img_size)
+    train_dataset = MoleculeDataset(name_dataset, split, img_size)
     
     # Dividim manualment en train (80%) i validació (20%)
     total = len(train_dataset)
@@ -140,4 +145,6 @@ def make_loaders(batch_size=16, max_len=500, img_size=224):
     )
     
     print(f"Train: {train_size} mostres | Val: {val_size} mostres")
-    return train_loader, val_loader, train_dataset.vocab_size, train_dataset.idx2char, train_dataset.max_len
+    
+    return train_loader, val_loader, train_dataset.vocab_size, \
+        train_dataset.idx2char, train_dataset.max_len

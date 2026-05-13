@@ -1,12 +1,14 @@
-import torch 
-import torch.nn as nn #Submòdul de PyTorch per xarxes neuronals.
-import wandb #Weights & Biases
-import random
 import numpy as np
+import random
+import wandb #Weights & Biases
+
+import torch 
+from torchinfo import summary
+import torch.nn as nn #Submòdul de PyTorch per xarxes neuronals.
 
 from models.models import MoleculeModel
-from utils.utils import make_loaders
 from train import train
+from utils.utils import make_loaders
 
 # Reproduïbilitat
 torch.backends.cudnn.deterministic = True
@@ -26,6 +28,8 @@ def model_pipeline(cfg):
         # 1. Carregar dades
         print("\n--- Carregant dades ---")
         train_loader, val_loader, vocab_size, idx2char, max_len = make_loaders(
+            name_dataset=config.name_dataset,
+            split=config.split,
             batch_size=config.batch_size,
             img_size=config.img_size
         )
@@ -33,38 +37,34 @@ def model_pipeline(cfg):
         # 2. Crear model
         print("\n--- Creant model ---")
         model = MoleculeModel(
-            
+            encoder=config.encoder, 
             vocab_size=vocab_size,
+            max_len=max_len,
+            idx2char=idx2char,
             embed_dim=config.embed_dim,
-            hidden_dim=config.hidden_dim,
-            freeze_resnet=config.freeze_resnet,
-            backbone_name=config.backbone
+            hidden_dim=config.hidden_dim
         ).to(device) #Puja model a GPU/CPU
 
-        params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"Paràmetres entrenables: {params:,}")
+        # Mostra informació de cada capa del model (parametres entrenables) i total
+        # print(f"Descripció de capes del model:\n{model}") 
+        summary(model)
+
+        # Només entrena els parametres amb requires_grad=True
+        params = [param for param in model.parameters() if param.requires_grad]
+        # print(f"Paràmetres entrenables: {params:,}")
 
         # 3. Loss i optimizer
         # ignore_index=0 → no penalitza el padding <PAD>
         criterion = nn.CrossEntropyLoss(ignore_index=0)
         optimizer = torch.optim.Adam(
-            model.parameters(),
+            params,
             lr=config.learning_rate
-        )
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode='min',        # volem minimitzar la val_loss
-            factor=0.5,        # redueix el LR a la meitat
-            patience=3,        # espera 3 epochs sense millora
-            
         )
 
         # 4. Entrenar
         print("\n--- Iniciant entrenament ---")
-        train(model, train_loader, val_loader, optimizer, criterion, scheduler=scheduler,
-              num_epochs=config.epochs,
-              device=device,
-              idx2char=idx2char)
+        train(model, train_loader, val_loader, optimizer, criterion, params,
+              num_epochs=config.epochs, device=device, idx2char=idx2char)
 
     return model
 
@@ -72,17 +72,24 @@ if __name__ == "__main__":
     wandb.login()
 
     config = dict(
+        # Model options
+        encoder="Resnet101",
+        decoder="LSTM",
+        embed_dim=256,
+        hidden_dim=512,
+        img_size=224,
+
+        # Train parameters
         epochs=20,
         batch_size=16,
         learning_rate=1e-3,
-        embed_dim=256,        # ← prova 128, 256, 512
-        hidden_dim=512,       # ← prova 256, 512, 1024
-        img_size=224,
-        freeze_resnet=True,   # ← True=congelat, False=finetuning
-        backbone='resnet18',  # ← 'resnet18', 'resnet34', 'resnet50' 
-        dataset="USPTO-30K-clean",
-        architecture="ResNet18+LSTM+Attention"
-        
+
+        # Data parameters
+        name_dataset="docling-project/MolGrapher-Synthetic-300K", # "docling-project/USPTO-30K"
+        split="validation", #"clean"
+
+        # Notes
+        notes="Capes Resnet50 (-1) congelades"
     )
 
     model = model_pipeline(config)
