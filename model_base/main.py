@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     # Opcions del model
     parser.add_argument('--encoder', type=str, default='resnet18', 
-                        choices=['resnet18', 'resnet50', 'resnet101'])
+                        choices=['conv', 'resnet18', 'resnet50', 'resnet101'])
     parser.add_argument('--decoder', type=str, default='lstm', choices=['lstm'])
 
     group = parser.add_argument_group('embedding_options')

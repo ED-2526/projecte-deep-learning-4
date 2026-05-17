@@ -3,6 +3,57 @@ import torch.nn as nn
 import torchvision.models as models
 
 # ============================================================
+# CUSTOM CNN: Red convolucional propia per a l'encoder
+# ============================================================
+class CustomCNN(nn.Module):
+    """Red convolucional personalitzada amb stride 2, 32->512 canales.
+    Entrada: imatges en escala de grisos (1 canal, 224x224)
+    Sortida: vector de features (batch, output_dim)
+    """
+    def __init__(self, output_dim=256):
+        super().__init__()
+        
+        # Conv 1 ch -> 32 ch (stride 2): 224 -> 112
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Conv 32 ch -> 64 ch (stride 2): 112 -> 56
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Conv 64 ch -> 256 ch (stride 2): 56 -> 28
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Conv 256 ch -> 512 ch (stride 2): 28 -> 14
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Global Average Pooling
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Fully connected layer para ajustar la dimensión de salida
+        self.fc = nn.Linear(512, output_dim)
+        
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.global_avg_pool(x)
+        x = x.view(x.size(0), -1)  # flatten
+        x = self.fc(x)
+        return x
+
+# ============================================================
 # ENCODER: CNN PRE-TRAINED que converteix la imatge en un vector
 # ============================================================
 class MoleculeEncoder(nn.Module):
@@ -25,16 +76,17 @@ class MoleculeEncoder(nn.Module):
             # Els pesos V2 són millors
             self.backbone = models.resnet50(weights='IMAGENET1K_V2')
 
-        else: 
+        elif encoder == "resnet101": 
             # Els pesos V2 són millors
             self.backbone = models.resnet101(weights='IMAGENET1K_V2')
-            
+        elif encoder == "conv":
+            self.backbone = CustomCNN(image_embed_dim)
+        
         # Es congelen totes les capas amb Requires_grad=False
-        for param in self.backbone.parameters(): 
-            param.requires_grad_(False)
-
-        # Es modifica l'última capa per aconseguir embed_dim (aquesta capa té requires_grad=True)
-        self.backbone.fc = nn.Linear(self.backbone.fc.in_features, image_embed_dim)
+        if encoder != "conv":
+            for param in self.backbone.parameters(): 
+                param.requires_grad_(False)
+            self.backbone.fc = nn.Linear(self.backbone.fc.in_features, image_embed_dim)
         
     def forward(self, images):
         features = self.backbone(images)                    # ==> (batch, image_embed_dim, 1, 1)
