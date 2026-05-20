@@ -41,8 +41,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # Opcions del model
-    parser.add_argument('--encoder', type=str, default='resnet18', 
-                        choices=['conv', 'resnet18', 'resnet50', 'resnet101'])
+    parser.add_argument('--encoder', type=str, default='resnet50', 
+                        choices=['conv', 'efficientnet5', 'resnet18', 'resnet50', 'resnet101'])
     parser.add_argument('--decoder', type=str, default='lstm', choices=['lstm'])
 
     group = parser.add_argument_group('embedding_options')
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     # Notes wandb
     parser.add_argument('--name', type=str)
     parser.add_argument('--group', type=str)
-    parser.add_argument('--descripcio', default='')
+    parser.add_argument('--description', default='')
 
     args = parser.parse_args()
     start = time.time()

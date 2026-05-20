@@ -162,13 +162,13 @@ class MoleculeDataset(Dataset):
         # 4. Elimina padding excessiu amb mides parells
         # 5. Normalitza els píxels (millora l'entrenament)
         self.transformacions = transforms.Compose([
-            transforms.Resize((input_dim, input_dim)),
             transforms.Grayscale(num_output_channels=image_channels),
             transforms.ToTensor(),
+            transforms.CenterCrop(max_square.max_dimension()), 
+            transforms.Resize((input_dim, input_dim)),
             # self.max_square, 
             # transforms.CenterCrop((224, 224))
-            # transforms.CenterCrop(max_square.max_dimension()), 
-            transforms.Normalize(mean=[0.5], std=[0.5])
+            # transforms.Normalize(mean=[0.5], std=[0.5])
         ])
 
     def __len__(self):

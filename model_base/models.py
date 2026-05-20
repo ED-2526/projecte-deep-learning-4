@@ -79,14 +79,22 @@ class MoleculeEncoder(nn.Module):
         elif encoder == "resnet101": 
             # Els pesos V2 són millors
             self.backbone = models.resnet101(weights='IMAGENET1K_V2')
+
+        elif encoder == "efficientnet5": 
+            self.backbone = models.efficientnet_b5(weights='IMAGENET1K_V1')
+
         elif encoder == "conv":
             self.backbone = CustomCNN(image_embed_dim)
         
-        # Es congelen totes les capas amb Requires_grad=False
+        # Es congelen totes les capas amb Requires_grad=False dels backbones pretrained
+        # i es modifica la seva última capa perquè coincideixi amb la nostra image_embed_dim
         if encoder != "conv":
             for param in self.backbone.parameters(): 
                 param.requires_grad_(False)
-            self.backbone.fc = nn.Linear(self.backbone.fc.in_features, image_embed_dim)
+            if encoder.startswith("resnet"): 
+                self.backbone.fc = nn.Linear(self.backbone.fc.in_features, image_embed_dim)
+            else: 
+                self.backbone.classifier[1] = nn.Linear(self.backbone.classifier[1].in_features, image_embed_dim)
         
     def forward(self, images):
         features = self.backbone(images)                    # ==> (batch, image_embed_dim, 1, 1)

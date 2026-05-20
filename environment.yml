@@ -1,4 +1,4 @@
-name: xnap-example
+name: deeplearning
 channels:
 - pytorch
 - defaults
@@ -13,6 +13,10 @@ dependencies:
   - wandb
   - onnxruntime
   - ipykernel
+  # Custom
+  - torchinfo 
+  - rdkit
+  - datasets
 - numpy
 - tqdm
 - tensorboard
