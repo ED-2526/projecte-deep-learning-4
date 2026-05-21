@@ -10,14 +10,31 @@ from torch.utils.data import Dataset, DataLoader
 from molecule_dataset import MoleculeDataset
 from models import MoleculeModel, MoleculeDecoder, MoleculeEncoder
 
-def make_criterion(criterion, label_smoothing): 
-    """Crea un criterion per calcular la loss.
 
-    Args:
-        criterion (str): nom del tipus de criterion.
-    """
-    if criterion == 'cross-entropy': 
-        return nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+def make_criterion(criterion, label_smoothing, vocab, device):
+     """Crea un criterion per calcular la loss. """
+     if criterion == 'cross-entropy':
+        # Crea vector de pesos per a cada token del vocabulari
+        vocab_size = len(vocab)
+        weights = torch.ones(vocab_size)
+
+        # PAD no compta
+        weights[vocab['<PAD>']] = 0.0
+
+        # Penalitza molt poc confondre C amb c (tots dos son carboni)
+        # Penalitza el doble si confon C amb N, F, O, etc.
+        # (no podem fer-ho exacte aquí, però pujem el pes dels heteroàtoms)
+        heteroatoms = ['N', 'O', 'F', 'S', 'Cl', 'Br', 'n', 'o', 's', 'P']
+        for atom in heteroatoms:
+            if atom in vocab:
+                weights[vocab[atom]] = 2.0
+
+        weights = weights.to(device)
+        return nn.CrossEntropyLoss(
+            weight=weights,
+            label_smoothing=label_smoothing,
+            ignore_index=0
+        )
     
 def make_loaders(dataset, batch_size, train_percentage):
     """Funció per aconseguir els train i val loaders segons un percentatge.
@@ -75,7 +92,9 @@ def make(config, device='cuda'):
         optimizer (torch.optim): per distribuir el gradient.
     """
     
-    dataset = MoleculeDataset(config.dataset, config.split, config.image_channels, config.input_dim)
+    dataset = MoleculeDataset(config.dataset, config.split, config.image_channels, config.input_dim,
+                            min_smiles_len=config.min_smiles_len,
+                           max_smiles_len=config.max_smiles_len)
     train_loader, val_loader = make_loaders(dataset, config.batch_size, config.train_percentage)
 
 
@@ -86,7 +105,8 @@ def make(config, device='cuda'):
     
     model = MoleculeModel(config.encoder, config.image_embed_dim, config.image_embed_dim,
                           config.hidden_dim, dataset.vocab_size, dataset.max_len, 
-                          dataset.diccionaris(), config.decoder_dropout).to(device)
+                          dataset.diccionaris(), config.decoder_dropout,
+                          num_layers=config.num_layers).to(device)
     
     # DUBTE
     # print("\nParàmetres Encoder:")
@@ -97,7 +117,7 @@ def make(config, device='cuda'):
     # Mostra informació del model
     summary(model)
 
-    criterion = make_criterion(config.criterion, config.label_smoothing)
+    criterion = make_criterion(config.criterion, config.label_smoothing, dataset.char2idx, device)
 
     # Només entrena els parametres amb requires_grad=True
     optimizer = torch.optim.Adam(model.params_train, lr=config.learning_rate)

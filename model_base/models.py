@@ -86,15 +86,29 @@ class MoleculeEncoder(nn.Module):
         elif encoder == "conv":
             self.backbone = CustomCNN(image_embed_dim)
         
-        # Es congelen totes les capas amb Requires_grad=False dels backbones pretrained
-        # i es modifica la seva última capa perquè coincideixi amb la nostra image_embed_dim
-        if encoder != "conv":
-            for param in self.backbone.parameters(): 
+        if encoder in ["resnet18", "resnet50", "resnet101"]:
+            # Congela TOT primer
+            for param in self.backbone.parameters():
                 param.requires_grad_(False)
-            if encoder.startswith("resnet"): 
-                self.backbone.fc = nn.Linear(self.backbone.fc.in_features, image_embed_dim)
-            else: 
-                self.backbone.classifier[1] = nn.Linear(self.backbone.classifier[1].in_features, image_embed_dim)
+
+            # Descongela l'últim bloc convolucional (layer4 a ResNet)
+            for param in self.backbone.layer4.parameters():
+                param.requires_grad_(True)
+
+            # Descongela la capa fc final (sempre entrenable)
+            self.backbone.fc = nn.Linear(
+                self.backbone.fc.in_features, image_embed_dim
+            )
+            # backbone.fc ja té requires_grad=True per defecte
+
+        elif encoder == "efficientnet5":
+            for param in self.backbone.parameters():
+                param.requires_grad_(False)
+            in_features = self.backbone.classifier[1].in_features
+            self.backbone.classifier = nn.Sequential(
+                nn.Dropout(p=0.5, inplace=True),
+                nn.Linear(in_features, image_embed_dim)
+            )
         
     def forward(self, images):
         features = self.backbone(images)                    # ==> (batch, image_embed_dim, 1, 1)
@@ -124,7 +138,7 @@ class MoleculeDecoder(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.embedding = nn.Embedding(vocab_size, caption_embed_dim)
-        self.lstm = nn.LSTM(caption_embed_dim, hidden_dim, batch_first=True, num_layers=num_layers)
+        self.lstm = nn.LSTM(caption_embed_dim + image_embed_dim, hidden_dim, batch_first=True, num_layers=num_layers)
         self.dropout = nn.Dropout(dropout)
 
         # S'encarrega de passar de hidden_dim a vocab_size per aconseguir els diferents logits
@@ -133,9 +147,14 @@ class MoleculeDecoder(nn.Module):
         # Transforma la dimensió del vector de la imatge perquè coincideixi amb hidden (en el cas que no siguin iguals)
         self.img2hidden = nn.Linear(image_embed_dim, hidden_dim)
         
-    def forward(self, seq, h, c):  
+    def forward(self, seq, h, c, features=None):  
         embedding = self.embedding(seq)                     #  ==> (batch, seq_len, caption_embed_dim)
-        out, (h, c) = self.lstm(embedding, (h, c))          #  ==> (batch, seq_len, hidden_dim)
+        if features is not None:
+            f = features.unsqueeze(1).expand(-1, embedding.size(1), -1)
+            lstm_input = torch.cat([embedding, f], dim=-1)  #  ==> (batch, seq_len, caption_embed_dim + image_embed_dim)
+        else:
+            lstm_input = embedding
+        out, (h, c) = self.lstm(lstm_input, (h, c))         #  ==> (batch, seq_len, hidden_dim)
         out = self.dropout(out)                             #  ==> (batch, seq_len, hidden_dim)
         out = self.fc(out)                                  #  ==> (batch, seq_len, vocab_size)
         return out, h, c                           
@@ -196,23 +215,24 @@ class MoleculeModel(nn.Module):
         """
         features = self.encoder(image)                      # ==> (batch, image_embed_dim)
         h, c = self.decoder.init_state(features)
-        out, h, c = self.decoder(seq, h, c)                  # ==> (batch, seq_len, vocab_size), (1, batch, hidden_dim)
+        out, h, c = self.decoder(seq, h, c, features=features)
         return out, h, c
 
-    def predict(self, seq, h, c): 
+    def predict(self, seq, h, c, features=None): 
         """Calcula una predicció segons un state i una seqüència. 
 
         Args:
             seq (tensor): sequència a predir. 
             h (tensor): hidden state.
             c (tensor): cell state.
+            features (tensor, optional): image features to inject at each step.
 
         Returns:
             out (tensor): predicció.
             h (tensor): hidden state últim.
             c (tensor): cell state últim.
         """
-        out, h, c = self.decoder(seq, h, c)
+        out, h, c = self.decoder(seq, h, c, features=features)
         return out, h, c
 
     def generate_prediction(self, image, device='cuda'):
@@ -236,7 +256,7 @@ class MoleculeModel(nn.Module):
         
         with torch.no_grad():
             for _ in range(self.max_len): 
-                pred, h, c = self.predict(token, h, c)
+                pred, h, c = self.predict(token, h, c, features=features)
                 token = torch.argmax(pred, dim=2)
                 char = self.idx2char.get(token.item(), '')
 
@@ -257,4 +277,50 @@ class MoleculeModel(nn.Module):
             text += char
 
         return text
+
+    def generate_beam(self, image, device='cuda', beam_size=3):
+        """Genera SMILES amb Beam Search."""
+        self.eval()
+        with torch.no_grad():
+            image = image.unsqueeze(0).to(device)
+            features = self.encoder(image)
+            h, c = self.decoder.init_state(features)
+
+            # Cada beam: (tokens_generats, log_prob_acumulada, h, c)
+            beams = [([1], 0.0, h, c)]  # 1 = <SOS>
+
+            for _ in range(self.max_len):
+                candidates = []
+
+                for tokens, score, h_beam, c_beam in beams:
+                    last_token = torch.tensor([[tokens[-1]]]).to(device)
+                    out, h_new, c_new = self.predict(last_token, h_beam, c_beam, features=features)
+
+                    # out: (1, 1, vocab_size)
+                    log_probs = torch.log_softmax(out[0, 0], dim=0)
+                    top_probs, top_tokens = torch.topk(log_probs, beam_size)
+
+                    for prob, tok in zip(top_probs, top_tokens):
+                        new_tokens = tokens + [tok.item()]
+                        new_score = score + prob.item()
+                        candidates.append((new_tokens, new_score, h_new, c_new))
+
+                # Ordena per score i queda amb els millors beam_size
+                candidates.sort(key=lambda x: x[1], reverse=True)
+                beams = candidates[:beam_size]
+
+                # Para si tots han generat <EOS>
+                if all(b[0][-1] == 2 for b in beams):  # 2 = <EOS>
+                    break
+
+            # Retorna el millor beam
+            best_tokens = beams[0][0]
+            text = ''
+            for tok in best_tokens[1:]:  # salta <SOS>
+                char = self.idx2char.get(tok, '')
+                if char == '<EOS>':
+                    break
+                if char not in ['<PAD>', '<SOS>']:
+                    text += char
+            return text
         

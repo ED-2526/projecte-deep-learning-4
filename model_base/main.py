@@ -55,8 +55,7 @@ if __name__ == "__main__":
     group = parser.add_argument_group('lstm_options')
     group.add_argument('--hidden_dim', type=int, default=512)
     parser.add_argument('--decoder_dropout', type=float, default=0.3)
-    # DUBTE
-    # group.add_argument('--num_layers', type=int, default=1)
+    group.add_argument('--num_layers', type=int, default=2)
 
     # Parametres entrenament
     parser.add_argument('--epochs', type=int, default=20)
@@ -64,6 +63,12 @@ if __name__ == "__main__":
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--criterion', type=str, default='cross-entropy')
     parser.add_argument('--label_smoothing', type=float, default=0.0)
+    
+    parser.add_argument('--min_smiles_len', type=int, default=40)
+    parser.add_argument('--max_smiles_len', type=int, default=60)
+
+    parser.add_argument('--beam_size', type=int, default=1)
+    # beam_size=1 és equivalent a greedy (per defecte)
 
     # Dataset
     parser.add_argument('--dataset', type=str, default='principal', 

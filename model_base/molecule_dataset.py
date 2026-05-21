@@ -3,6 +3,7 @@ from rdkit import Chem
 import torch
 from torchvision import transforms 
 from torch.utils.data import Dataset 
+from PIL import Image
 
 class Padding: 
     """Classe emprada per MoleculeDataset per calcular i fer el màxim padding de les imatges. 
@@ -57,7 +58,7 @@ class Padding:
 class MoleculeDataset(Dataset):
     """Classer per guardar les dades de les molècules del dataset desitjat.
     """
-    def __init__(self, dataset, split, image_channels, input_dim):
+    def __init__(self, dataset, split, image_channels, input_dim, min_smiles_len=40, max_smiles_len=60):
         """Càrrega i prepara les dades del dataset.
 
         Args:
@@ -93,6 +94,21 @@ class MoleculeDataset(Dataset):
                     continue
                 smiles = Chem.MolToSmiles(mol)  # SMILES canònic
 
+                # Filtre per longitud
+                if len(smiles) < min_smiles_len or len(smiles) > max_smiles_len:
+                    skipped += 1
+                    continue
+
+                # Filtre % carboni: descarta si >90% dels àtoms son carboni
+                atoms = [a.GetSymbol() for a in mol.GetAtoms()]
+                if len(atoms) == 0:
+                    skipped += 1
+                    continue
+                carbon_pct = atoms.count('C') / len(atoms)
+                if carbon_pct > 0.90:   # ← ajusta aquest llindar si cal
+                    skipped += 1
+                    continue
+
                 # Màxima shape
                 w, h = item['image'].size
                 max_square.comparar(h, w)
@@ -114,6 +130,25 @@ class MoleculeDataset(Dataset):
 
             for item in raw_data:
                 smiles = item['smiles']
+
+                # Filtre per longitud
+                if len(smiles) < min_smiles_len or len(smiles) > max_smiles_len:
+                    skipped += 1
+                    continue
+
+                # Filtre % carboni
+                mol = Chem.MolFromSmiles(smiles)
+                if mol is None:
+                    skipped += 1
+                    continue
+                atoms = [a.GetSymbol() for a in mol.GetAtoms()]
+                if len(atoms) == 0:
+                    skipped += 1
+                    continue
+                carbon_pct = atoms.count('C') / len(atoms)
+                if carbon_pct > 0.90:
+                    skipped += 1
+                    continue
 
                 # Màxima shape
                 w, h = item['image'].size
@@ -150,26 +185,59 @@ class MoleculeDataset(Dataset):
         self.idx2char = {v: k for k, v in self.char2idx.items()}
         self.vocab_size = len(self.char2idx) 
 
+        
+
         print(f"Vocabulari: {self.vocab_size} caràcters únics")
         print(f"Número d'exemples a {name_dataset}--{split}: {len(self.data)}")
         print(f"Mida màxima de SMILES a {name_dataset}--{split}: {self.max_len}")
         print(f"Dimensió màxima (hxw) de Imatge a {name_dataset}--{split}: {max_square.max_dimension()}")
 
-        # Transformacions de les imatges:
-        # 1. Converteix a escala de grisos (blanc i negre) amb 3 canals o 1
-        # 2. Converteix a tensor PyTorch
-        # 3. Padding fins màxim dimensions
-        # 4. Elimina padding excessiu amb mides parells
-        # 5. Normalitza els píxels (millora l'entrenament)
-        self.transformacions = transforms.Compose([
-            transforms.Grayscale(num_output_channels=image_channels),
-            transforms.ToTensor(),
-            transforms.CenterCrop(max_square.max_dimension()), 
-            transforms.Resize((input_dim, input_dim)),
-            # self.max_square, 
-            # transforms.CenterCrop((224, 224))
-            # transforms.Normalize(mean=[0.5], std=[0.5])
-        ])
+        # Guardem input_dim per usar-lo al __getitem__
+        self.input_dim = input_dim
+        self.image_channels = image_channels
+    
+
+    def _preprocess_image(self, pil_image):
+        """Preprocessament correcte de la imatge de molècula."""
+        
+        # 1. Converteix a escala de grisos
+        img = pil_image.convert('L')  # L = grayscale PIL
+        
+        # 2. Binaritza: píxels >128 → 255 (blanc), <=128 → 0 (negre)
+        threshold = 128
+        img = img.point(lambda p: 255 if p > threshold else 0)
+        
+        # 3. Resize PROPORCIONAL amb canvas blanc
+        # No deforma la molècula, l'encaixa en un quadrat blanc
+        target_size = self.input_dim
+        original_w, original_h = img.size
+        
+        # Calcula escala mantenint proporció
+        scale = min(target_size / original_w, target_size / original_h)
+        new_w = int(original_w * scale)
+        new_h = int(original_h * scale)
+        
+        img_resized = img.resize((new_w, new_h), Image.LANCZOS)
+        
+        # Crea canvas blanc i centra la imatge
+        canvas = Image.new('L', (target_size, target_size), 255)  # 255=blanc
+        offset_x = (target_size - new_w) // 2
+        offset_y = (target_size - new_h) // 2
+        canvas.paste(img_resized, (offset_x, offset_y))
+        
+        # 4. Converteix a RGB (duplica el canal gris 3 vegades)
+        if self.image_channels == 3:
+            canvas = canvas.convert('RGB')  # PIL duplica automàticament el canal
+        
+        # 5. Converteix a tensor [0,1]
+        import torchvision.transforms.functional as TF
+        tensor = TF.to_tensor(canvas)  # [0, 255] → [0.0, 1.0]
+        
+        # 6. Normalitza de [0,1] a [-1,1]: x*2 - 1
+        tensor = tensor * 2.0 - 1.0
+        
+        return tensor
+
 
     def __len__(self):
         return len(self.data) #quantes mostres/àtoms hi ha
@@ -177,9 +245,9 @@ class MoleculeDataset(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
         
-        # Processar la imatge
-        image = self.transformacions(item['image']) 
-        
+        # Processar la imatge amb el pipeline estricte
+        image = self._preprocess_image(item['image'])
+
         # Processar el text: convertir caràcters a índexs numèrics
         mol_text = item['smiles'] 
         tokens = (
