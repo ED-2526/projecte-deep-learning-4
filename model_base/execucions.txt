@@ -1,0 +1,30 @@
+Experiment 1 — ResNet50 base:
+bashpython main.py \
+  --encoder resnet50 \
+  --name "resnet50-base" \
+  --group "mar" \
+  --epochs 30 \
+  --beam_size 1
+Experiment 2 — ResNet50 + Beam Search:
+bashpython main.py \
+  --encoder resnet50 \
+  --name "resnet50-bs3" \
+  --group "mar" \
+  --epochs 30 \
+  --beam_size 3
+Experiment 3 — ResNet50 + Teacher Forcing:
+bashpython main.py \
+  --encoder resnet50 \
+  --name "resnet50-tf" \
+  --group "mar" \
+  --epochs 30 \
+  --beam_size 1 \
+  --teacher_forcing
+Experiment 4 — ResNet50 + Beam Search + Teacher Forcing:
+bashpython main.py \
+  --encoder resnet50 \
+  --name "resnet50-bs3-tf" \
+  --group "mar" \
+  --epochs 30 \
+  --beam_size 3 \
+  --teacher_forcing
