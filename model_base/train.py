@@ -106,10 +106,17 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
     for epoch in range(config.epochs):
         print(f"\n=== Epoch {epoch+1}/{config.epochs} ===")
 
-        if epoch < 3:
-            tf_ratio = 1.0
-        else:
-            tf_ratio = max(0.4, 1.0 - (epoch - 2) * 0.06)
+        # decaïment en escales:
+        if epoch < 10:
+            tf_ratio = 1.0      # ——————————
+        elif epoch < 20:        #           |
+            tf_ratio = 0.85     #            ————————
+        #elif epoch < 30:        #                    |
+            #tf_ratio = 0.70     #                     ————————
+        #elif epoch < 40:        #                             |
+            #tf_ratio = 0.55     #                              ————————
+        else:                   #                                      |
+            tf_ratio = 0.70     #                                       ————
 
         train_loss, train_acc = train_epoch(
             model, train_loader, optimizer, criterion, device,
@@ -134,7 +141,7 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
             "train_acc": train_acc,
             "val_acc": val_acc,
             "teacher_forcing_ratio": tf_ratio,
-        })
+        }, step=epoch+1)
         
 def compute_fingerprint_tanimoto(smiles_pred, smiles_true):
     """
@@ -208,7 +215,7 @@ def molecule_inference(model, images, captions, epoch, device='cuda', beam_size=
             print(f"\n\tTRUE:\n\t{true_smiles[i]}")
             print(f"\tPRED:\n\t{pred_smiles[i]}")
 
-    wandb.log({**metrics, "mol/molecules": table})
+    wandb.log({**metrics, "mol/molecules": table}, step=epoch+1)
     # print(f"\tTanimoto: {tanimoto}")
     # print(f"\tValid: {valid}")
     # print(f"\tExact match: {exact}")
