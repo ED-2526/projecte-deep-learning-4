@@ -51,7 +51,9 @@ if __name__ == "__main__":
     group = parser.add_argument_group('cnn_options')
     parser.add_argument('--input_dim', type=int, default=224)
     parser.add_argument('--image_embed_dim', type=int, default=256)
-
+    parser.add_argument('--teacher_forcing', action='store_true', default=False)
+    # Si passes --teacher_forcing, s'activa el decaïment
+    # Si no el passes, tf=0.0 sempre
     group = parser.add_argument_group('lstm_options')
     group.add_argument('--hidden_dim', type=int, default=512)
     parser.add_argument('--decoder_dropout', type=float, default=0.3)
