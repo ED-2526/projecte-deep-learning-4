@@ -106,17 +106,21 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
     for epoch in range(config.epochs):
         print(f"\n=== Epoch {epoch+1}/{config.epochs} ===")
 
-        # decaïment en escales:
-        if epoch < 10:
-            tf_ratio = 1.0      # ——————————
-        elif epoch < 20:        #           |
-            tf_ratio = 0.85     #            ————————
-        #elif epoch < 30:        #                    |
-            #tf_ratio = 0.70     #                     ————————
-        #elif epoch < 40:        #                             |
-            #tf_ratio = 0.55     #                              ————————
-        else:                   #                                      |
-            tf_ratio = 0.70     #                                       ————
+        if config.teacher_forcing:
+            # decaïment en escales:
+            if epoch < 10:
+                tf_ratio = 1.0      # ——————————
+            elif epoch < 20:        #           |
+                tf_ratio = 0.85     #            ————————
+            #elif epoch < 30:        #                    |
+                #tf_ratio = 0.70     #                     ————————
+            #elif epoch < 40:        #                             |
+                #tf_ratio = 0.55     #                              ————————
+            else:                   #                                      |
+                tf_ratio = 0.70     #  
+        else:
+            # Sense Teacher Forcing: el model sempre usa el seu propi token
+            tf_ratio = 0.0  
 
         train_loss, train_acc = train_epoch(
             model, train_loader, optimizer, criterion, device,
