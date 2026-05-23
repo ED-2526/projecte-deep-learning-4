@@ -92,10 +92,9 @@ def val_epoch(epoch, model, loader, criterion, device, beam_size=1):
             total_loss += loss.item()
             total_acc += acc.item()/batch_size
 
-    # Cada 5 epochs, es miren les mètriques de l'últim batch del epoch
-        if (epoch + 1) % 5 == 0:
-            print(f"\n  → Fent inferència de molècules...")
-            molecule_inference(model, images, captions, epoch, device=device, beam_size=beam_size)
+    # Cada epoch, es miren les mètriques de l'últim batch del epoch
+        print(f"\n  → Fent inferència de molècules...")
+        molecule_inference(model, images, captions, epoch, device=device, beam_size=beam_size)
 
     return total_loss / len(loader), total_acc/len(loader)
 

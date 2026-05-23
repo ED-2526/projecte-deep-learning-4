@@ -160,8 +160,9 @@ class MoleculeDecoder(nn.Module):
         return out, h, c                           
 
     def init_state(self, features): 
-        h = self.img2hidden(features).unsqueeze(0)  # ==> (1, batch, hidden_dim)
-        c = torch.zeros(self.num_layers, features.size(0), self.hidden_dim).to(features.device)   # ==> (1, batch, hidden_dim)
+        h = self.img2hidden(features).unsqueeze(0)  # (1, batch, hidden_dim)
+        h = h.repeat(self.num_layers, 1, 1)          # (2, batch, hidden_dim)
+        c = torch.zeros(self.num_layers, features.size(0), self.hidden_dim).to(features.device)
         return h, c
 
     
