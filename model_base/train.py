@@ -110,10 +110,7 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
 
         if config.teacher_forcing:
             # decaïment en escales:
-            if epoch < 140:
-                tf_ratio = 1- np.floor(epoch/14)*0.1
-            else: 
-                tf_ratio=0   
+            tf_ratio = 1- np.floor(epoch/14)*0.1
         else:
             # Sense Teacher Forcing: el model sempre usa el seu propi token
             tf_ratio = 0.0  

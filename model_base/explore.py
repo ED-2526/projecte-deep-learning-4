@@ -28,9 +28,12 @@ torch.manual_seed(42)
 # print(pred1)
 # print(pred2)
 
-model = models.resnet18()
+# Prova disminució tf_ration
+tf_ratio = 1
+for epoch in range(150):
+    tf_ratio = 1 - np.floor(epoch/14)*0.1
+    print(epoch, tf_ratio)
 
-print(model)
 # print(torch.argmax(x, dim=2))
 # t = 0
 # exact = torch.equal(x, y)
