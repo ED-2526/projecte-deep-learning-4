@@ -61,12 +61,13 @@ class MoleculeEncoder(nn.Module):
     Es basa en reutilitzar els pesos de models ja entrenat, només modificant l'última capa
     perquè conincideixi amb les dimensions desitjades. S'entrena només aquesta.
     """
-    def __init__(self, encoder, image_embed_dim):
+    def __init__(self, encoder, image_embed_dim, unfreeze4):
         """Crea el backbone del encoder i una FC per modificar l'última capa segons embed_dim.
 
         Args:
             encoder (str): nom del backbone.
             embed_dim (int): dimensió del embedding que haurà de tenir les imatges.
+            unfreeze4 (int): si es descongela o no la capa 4 dels resnet.
         """
         super().__init__()
         if encoder == "resnet18": 
@@ -80,35 +81,24 @@ class MoleculeEncoder(nn.Module):
             # Els pesos V2 són millors
             self.backbone = models.resnet101(weights='IMAGENET1K_V2')
 
-        elif encoder == "efficientnet5": 
-            self.backbone = models.efficientnet_b5(weights='IMAGENET1K_V1')
-
         elif encoder == "conv":
             self.backbone = CustomCNN(image_embed_dim)
         
-        if encoder in ["resnet18", "resnet50", "resnet101"]:
+        if encoder != 'conv':
             # Congela TOT primer
             for param in self.backbone.parameters():
                 param.requires_grad_(False)
 
             # Descongela l'últim bloc convolucional (layer4 a ResNet)
-            for param in self.backbone.layer4.parameters():
-                param.requires_grad_(True)
+            if unfreeze4: 
+                for param in self.backbone.layer4.parameters():
+                    param.requires_grad_(True)
 
-            # Descongela la capa fc final (sempre entrenable)
+            # Modifica capa final
             self.backbone.fc = nn.Linear(
                 self.backbone.fc.in_features, image_embed_dim
             )
             # backbone.fc ja té requires_grad=True per defecte
-
-        elif encoder == "efficientnet5":
-            for param in self.backbone.parameters():
-                param.requires_grad_(False)
-            in_features = self.backbone.classifier[1].in_features
-            self.backbone.classifier = nn.Sequential(
-                nn.Dropout(p=0.5, inplace=True),
-                nn.Linear(in_features, image_embed_dim)
-            )
         
     def forward(self, images):
         features = self.backbone(images)                    # ==> (batch, image_embed_dim, 1, 1)
@@ -174,7 +164,7 @@ class MoleculeModel(nn.Module):
     i una caption donada. 
     """
     def __init__(self, encoder, image_embed_dim, caption_embed_dim, hidden_dim,
-                 vocab_size, max_len, diccionaris, dropout, num_layers=1):
+                 unfreeze4, vocab_size, max_len, diccionaris, dropout, num_layers=1):
         """Crear les dues parts del model: Encoder i Decoder
 
         Args:
@@ -182,6 +172,7 @@ class MoleculeModel(nn.Module):
             image_embed_dim (_type_): dimensió del embedding de les imatges.
             caption_embed_dim (_type_): dimensió del embedding de les imatges.
             hidden_dim (_type_): dimensió hidden del LSTM.
+            unfreeze4 (bool): si es descongela la capa 4 dels resnets.
             vocab_size (_type_): número de caràcters únics.
             max_len (_type_): màxim longitud de SMILES trobada al dataset.
             diccionaris (_type_): diccionaris per covertir de char a idx i a l'inrevés.
@@ -194,7 +185,7 @@ class MoleculeModel(nn.Module):
         self.char2idx = diccionaris[0]
         self.idx2char = diccionaris[1]
 
-        self.encoder = MoleculeEncoder(encoder, image_embed_dim)
+        self.encoder = MoleculeEncoder(encoder, image_embed_dim, unfreeze4)
         self.decoder = MoleculeDecoder(vocab_size, caption_embed_dim, image_embed_dim,
                                        hidden_dim, dropout, num_layers)
 
@@ -263,7 +254,8 @@ class MoleculeModel(nn.Module):
 
                 if char == "<EOS>": 
                     break
-                text += char
+                if char not in ['<PAD>', '<SOS>']:
+                    text += char
 
         return text
     
@@ -275,7 +267,9 @@ class MoleculeModel(nn.Module):
 
             if char == "<EOS>":
                 break
-            text += char
+
+            if char not in ['<PAD>', '<SOS>']:
+                text += char
 
         return text
 

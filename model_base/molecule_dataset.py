@@ -58,14 +58,17 @@ class Padding:
 class MoleculeDataset(Dataset):
     """Classer per guardar les dades de les molècules del dataset desitjat.
     """
-    def __init__(self, dataset, split, image_channels, input_dim, min_smiles_len=40, max_smiles_len=60):
+    def __init__(self, dataset, split, image_channels, input_dim, smiles_filter, min_smiles_len, max_smiles_len):
         """Càrrega i prepara les dades del dataset.
 
         Args:
             dataset (str): nom del dataset.
             split (str): split del dataset.
             image_channels (int): número de canals desitjats de la imatge.
-            input__dim (int): mida desitjada de la imatge.
+            input_dim (int): mida desitjada de la imatge.
+            filtre (bool): si hi ha filtre.
+            min_smiles_len (int): valor mínim de smiles.
+            max_smiles_len (int): valor màxim de smiles.
 
         Raises:
             ValueError: si el nom del dataset és incorrecte.
@@ -95,60 +98,19 @@ class MoleculeDataset(Dataset):
                 smiles = Chem.MolToSmiles(mol)  # SMILES canònic
 
                 # Filtre per longitud
-                if len(smiles) < min_smiles_len or len(smiles) > max_smiles_len:
+                if smiles_filter and (len(smiles) < min_smiles_len or len(smiles) > max_smiles_len):
                     skipped += 1
                     continue
 
-                # Filtre % carboni: descarta si >90% dels àtoms son carboni
-                atoms = [a.GetSymbol() for a in mol.GetAtoms()]
-                if len(atoms) == 0:
-                    skipped += 1
-                    continue
-                carbon_pct = atoms.count('C') / len(atoms)
-                if carbon_pct > 0.90:   # ← ajusta aquest llindar si cal
-                    skipped += 1
-                    continue
-
-                # Màxima shape
-                w, h = item['image'].size
-                max_square.comparar(h, w)
-
-                # Afegeix nova molècula
-                self.data.append({'image': item['image'], 'smiles': smiles})
-
-            print(f"\tMostres vàlides: {len(self.data)} | Descartades: {skipped}")
-        
-        elif dataset == "secundari":
-            # Aquest dataset ja inclou el camp 'smiles' directament.
-            # Els splits oficials són: 'train', 'validation', 'test'
-            name_dataset = "docling-project/MolGrapher-Synthetic-300K"
-            raw_data = load_dataset(name_dataset)[split]
-
-            print("\nLlegint SMILES directament del dataset...")
-            self.data = []
-            skipped = 0
-
-            for item in raw_data:
-                smiles = item['smiles']
-
-                # Filtre per longitud
-                if len(smiles) < min_smiles_len or len(smiles) > max_smiles_len:
-                    skipped += 1
-                    continue
-
-                # Filtre % carboni
-                mol = Chem.MolFromSmiles(smiles)
-                if mol is None:
-                    skipped += 1
-                    continue
-                atoms = [a.GetSymbol() for a in mol.GetAtoms()]
-                if len(atoms) == 0:
-                    skipped += 1
-                    continue
-                carbon_pct = atoms.count('C') / len(atoms)
-                if carbon_pct > 0.90:
-                    skipped += 1
-                    continue
+                # # Filtre % carboni: descarta si >90% dels àtoms son carboni
+                # atoms = [a.GetSymbol() for a in mol.GetAtoms()]
+                # if len(atoms) == 0:
+                #     skipped += 1
+                #     continue
+                # carbon_pct = atoms.count('C') / len(atoms)
+                # if carbon_pct > 0.90:   # ← ajusta aquest llindar si cal
+                #     skipped += 1
+                #     continue
 
                 # Màxima shape
                 w, h = item['image'].size
@@ -185,8 +147,6 @@ class MoleculeDataset(Dataset):
         self.idx2char = {v: k for k, v in self.char2idx.items()}
         self.vocab_size = len(self.char2idx) 
 
-        
-
         print(f"Vocabulari: {self.vocab_size} caràcters únics")
         print(f"Número d'exemples a {name_dataset}--{split}: {len(self.data)}")
         print(f"Mida màxima de SMILES a {name_dataset}--{split}: {self.max_len}")
@@ -195,7 +155,6 @@ class MoleculeDataset(Dataset):
         # Guardem input_dim per usar-lo al __getitem__
         self.input_dim = input_dim
         self.image_channels = image_channels
-    
 
     def _preprocess_image(self, pil_image):
         """Preprocessament correcte de la imatge de molècula."""
@@ -204,8 +163,8 @@ class MoleculeDataset(Dataset):
         img = pil_image.convert('L')  # L = grayscale PIL
         
         # 2. Binaritza: píxels >128 → 255 (blanc), <=128 → 0 (negre)
-        threshold = 128
-        img = img.point(lambda p: 255 if p > threshold else 0)
+        # threshold = 128
+        # img = img.point(lambda p: 255 if p > threshold else 0)
         
         # 3. Resize PROPORCIONAL amb canvas blanc
         # No deforma la molècula, l'encaixa en un quadrat blanc
@@ -235,9 +194,7 @@ class MoleculeDataset(Dataset):
         
         # 6. Normalitza de [0,1] a [-1,1]: x*2 - 1
         tensor = tensor * 2.0 - 1.0
-        
         return tensor
-
 
     def __len__(self):
         return len(self.data) #quantes mostres/àtoms hi ha
@@ -258,8 +215,7 @@ class MoleculeDataset(Dataset):
         
         # Farciment (padding) per igualar longituds dins el batch
         pad_len = self.max_len + 2 - len(tokens)
-        tokens = tokens + [self.char2idx['<PAD>']] * pad_len
-        
+        tokens = tokens + [self.char2idx['<PAD>']] * pad_len 
         return image, torch.tensor(tokens, dtype=torch.long), len(item["smiles"])
     
     def diccionaris(self): 

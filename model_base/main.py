@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     # Opcions del model
     parser.add_argument('--encoder', type=str, default='resnet50', 
-                        choices=['conv', 'efficientnet5', 'resnet18', 'resnet50', 'resnet101'])
+                        choices=['conv', 'resnet18', 'resnet50', 'resnet101'])
     parser.add_argument('--decoder', type=str, default='lstm', choices=['lstm'])
 
     group = parser.add_argument_group('embedding_options')
@@ -51,34 +51,37 @@ if __name__ == "__main__":
     group = parser.add_argument_group('cnn_options')
     parser.add_argument('--input_dim', type=int, default=224)
     parser.add_argument('--image_embed_dim', type=int, default=256)
-    parser.add_argument('--teacher_forcing', action='store_true', default=False)
-    # Si passes --teacher_forcing, s'activa el decaïment
-    # Si no el passes, tf=0.0 sempre
+    parser.add_argument('--unfreeze4', action='store_true', default=False)
+    
     group = parser.add_argument_group('lstm_options')
     group.add_argument('--hidden_dim', type=int, default=512)
     parser.add_argument('--decoder_dropout', type=float, default=0.3)
-    group.add_argument('--num_layers', type=int, default=2)
+    group.add_argument('--num_layers', type=int, default=1)
 
     # Parametres entrenament
-    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--epochs', type=int, default=150)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
-    parser.add_argument('--criterion', type=str, default='cross-entropy')
+    parser.add_argument('--criterion', type=str, default='cross-entropy', 
+                        choices=['cross-entropy', 'custom-cross-entropy'])
     parser.add_argument('--label_smoothing', type=float, default=0.0)
-    
-    parser.add_argument('--min_smiles_len', type=int, default=40)
-    parser.add_argument('--max_smiles_len', type=int, default=60)
-
+    parser.add_argument('--teacher_forcing', action='store_true', default=False)
+    # Si passes --teacher_forcing, s'activa el decaïment
+    # Si no el passes, tf=0.0 sempre
     parser.add_argument('--beam_size', type=int, default=1)
     # beam_size=1 és equivalent a greedy (per defecte)
 
     # Dataset
     parser.add_argument('--dataset', type=str, default='principal', 
-                        choices=['principal', 'secundari'])
+                        choices=['principal', 'all'])
     parser.add_argument('--split', type=str, default='clean',
                         choices=['clean', 'abbreviated', 'large'])
     parser.add_argument('--train_percentage', type=float, default=0.8)
     parser.add_argument('--image_channels', type=int, default=3)
+
+    parser.add_argument('--smiles_filter', action='store_true', default=False)
+    parser.add_argument('--min_smiles_len', default=40)
+    parser.add_argument('--max_smiles_len', default=60)
     
     # Notes wandb
     parser.add_argument('--name', type=str)

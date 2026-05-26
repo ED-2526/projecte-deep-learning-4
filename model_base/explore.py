@@ -13,21 +13,24 @@ import torch.optim as optim
 torch.manual_seed(42)
 
 # Mostra del funcionament del LSTM
-x = torch.tensor([[[1, 2, 3, 4], [1, 2, 3, 4]], 
-                  [[1, 2, 3, 4], [1, 2, 3, 4]]]).to(torch.float32) 
+# x = torch.tensor([[[1, 2, 3, 4], [1, 2, 3, 4]], 
+#                   [[1, 2, 3, 4], [1, 2, 3, 4]]]).to(torch.float32) 
 
-x_prima = torch.tensor([[[1, 2, 3, 4]]]).to(torch.float32) 
+# x_prima = torch.tensor([[[1, 2, 3, 4]]]).to(torch.float32) 
 
-h = torch.tensor([[[0, 0, 0, 0, 0, 0]]]).to(torch.float32)
-c = torch.tensor([[[0, 0, 0, 0, 0, 0]]]).to(torch.float32)
-lstm = nn.LSTM(input_size=4, hidden_size=6, batch_first=True)
-pred, _ = lstm(x)
-pred1, (h, c) = lstm(x_prima, (h, c))
-pred2, (h, c) = lstm(x_prima, (h, c))
-print(pred)
-print(pred1)
-print(pred2)
+# h = torch.tensor([[[0, 0, 0, 0, 0, 0]]]).to(torch.float32)
+# c = torch.tensor([[[0, 0, 0, 0, 0, 0]]]).to(torch.float32)
+# lstm = nn.LSTM(input_size=4, hidden_size=6, batch_first=True)
+# pred, _ = lstm(x)
+# pred1, (h, c) = lstm(x_prima, (h, c))
+# pred2, (h, c) = lstm(x_prima, (h, c))
+# print(pred)
+# print(pred1)
+# print(pred2)
 
+model = models.resnet18()
+
+print(model)
 # print(torch.argmax(x, dim=2))
 # t = 0
 # exact = torch.equal(x, y)

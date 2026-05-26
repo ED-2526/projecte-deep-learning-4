@@ -13,13 +13,13 @@ from models import MoleculeModel, MoleculeDecoder, MoleculeEncoder
 
 def make_criterion(criterion, label_smoothing, vocab, device):
      """Crea un criterion per calcular la loss. """
-     if criterion == 'cross-entropy':
+     if criterion == 'custom-cross-entropy':
         # Crea vector de pesos per a cada token del vocabulari
         vocab_size = len(vocab)
         weights = torch.ones(vocab_size)
 
         # PAD no compta
-        weights[vocab['<PAD>']] = 0.0
+        # weights[vocab['<PAD>']] = 0.0
 
         # Penalitza molt poc confondre C amb c (tots dos son carboni)
         # Penalitza el doble si confon C amb N, F, O, etc.
@@ -33,8 +33,9 @@ def make_criterion(criterion, label_smoothing, vocab, device):
         return nn.CrossEntropyLoss(
             weight=weights,
             label_smoothing=label_smoothing,
-            ignore_index=0
         )
+     else: 
+        return nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     
 def make_loaders(dataset, batch_size, train_percentage):
     """Funció per aconseguir els train i val loaders segons un percentatge.
@@ -92,29 +93,16 @@ def make(config, device='cuda'):
         optimizer (torch.optim): per distribuir el gradient.
     """
     
-    dataset = MoleculeDataset(config.dataset, config.split, config.image_channels, config.input_dim,
-                            min_smiles_len=config.min_smiles_len,
-                           max_smiles_len=config.max_smiles_len)
+    dataset = MoleculeDataset(config.dataset, config.split, config.image_channels, config.input_dim, config.smiles_filter,
+                              min_smiles_len=config.min_smiles_len,
+                              max_smiles_len=config.max_smiles_len)
     train_loader, val_loader = make_loaders(dataset, config.batch_size, config.train_percentage)
-
-
-    # DUBTE
-    # encoder = MoleculeEncoder(encoder, config.image_embed_dim).to(device)
-    # decoder = MoleculeDecoder(dataset.vocab_size, config.caption_embed_dim, config.image_embed_dim,
-    #                                 config.hidden_dim, config.dropout, config.num_layers).to(device)
     
     model = MoleculeModel(config.encoder, config.image_embed_dim, config.image_embed_dim,
-                          config.hidden_dim, dataset.vocab_size, dataset.max_len, 
+                          config.hidden_dim, config.unfreeze4, dataset.vocab_size, dataset.max_len, 
                           dataset.diccionaris(), config.decoder_dropout,
                           num_layers=config.num_layers).to(device)
-    
-    # DUBTE
-    # print("\nParàmetres Encoder:")
-    # summary(encoder)
-    # print("\nParàmetres Decoder:")
-    # summary(decoder)
 
-    # Mostra informació del model
     summary(model)
 
     criterion = make_criterion(config.criterion, config.label_smoothing, dataset.char2idx, device)
