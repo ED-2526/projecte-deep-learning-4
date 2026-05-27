@@ -59,13 +59,16 @@ if __name__ == "__main__":
     group.add_argument('--num_layers', type=int, default=1)
 
     # Parametres entrenament
-    parser.add_argument('--epochs', type=int, default=150)
+    parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--criterion', type=str, default='cross-entropy', 
                         choices=['cross-entropy', 'custom-cross-entropy'])
     parser.add_argument('--label_smoothing', type=float, default=0.0)
     parser.add_argument('--teacher_forcing', action='store_true', default=False)
+    parser.add_argument('--teacher_forcing_schedule', type=str, default='lineal', 
+                        choices=['lineal', 'sigmoid'])
+    
     # Si passes --teacher_forcing, s'activa el decaïment
     # Si no el passes, tf=0.0 sempre
     parser.add_argument('--beam_size', type=int, default=1)

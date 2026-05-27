@@ -103,14 +103,18 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
     wandb.watch(model, criterion, log="all", log_freq=50)
     best_val_loss = float('inf')
 
-    tf_ratio = 1.0
-
     for epoch in range(config.epochs):
         print(f"\n=== Epoch {epoch+1}/{config.epochs} ===")
 
         if config.teacher_forcing:
-            # decaïment en escales:
-            tf_ratio = 1- np.floor(epoch/14)*0.1
+            if config.teacher_forcing_schedule == 'lineal': 
+                tf_ratio = 1- np.floor(epoch/20)*0.25
+            else: 
+                if epoch < 90: 
+                    left = np.floor(epoch/10)*10+5
+                    tf_ratio = 1/(1+np.exp(0.095*(left-50)))
+                else: 
+                    tf_ratio = 0
         else:
             # Sense Teacher Forcing: el model sempre usa el seu propi token
             tf_ratio = 0.0  
