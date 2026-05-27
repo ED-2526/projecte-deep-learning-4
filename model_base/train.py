@@ -108,7 +108,7 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
 
         if config.teacher_forcing:
             if config.teacher_forcing_schedule == 'lineal': 
-                tf_ratio = 1- np.floor(epoch/20)*0.25
+                tf_ratio = max(1- np.floor(epoch/10)*0.125, 0)
             else: 
                 if epoch < 90: 
                     left = np.floor(epoch/10)*10+5
