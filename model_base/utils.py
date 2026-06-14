@@ -99,7 +99,7 @@ def make(config, device='cuda'):
     train_loader, val_loader = make_loaders(dataset, config.batch_size, config.train_percentage)
     
     model = MoleculeModel(config.encoder, config.image_embed_dim, config.image_embed_dim,
-                          config.hidden_dim, config.unfreeze4, dataset.vocab_size, dataset.max_len, 
+                          config.hidden_dim, config.unfreeze, dataset.vocab_size, dataset.max_len, 
                           dataset.diccionaris(), config.decoder_dropout,
                           num_layers=config.num_layers).to(device)
 

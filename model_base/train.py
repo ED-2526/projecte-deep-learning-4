@@ -67,9 +67,13 @@ def val_epoch(epoch, model, loader, criterion, device, beam_size=1):
 
     total_loss = 0
     total_acc = 0
+    total_tanimoto_mean = 0
+    total_valid_mean = 0
+
+    num_batch = len(loader)
 
     with torch.no_grad():
-        for images, captions, true_len in tqdm(loader, desc="Validation"):
+        for idx, (images, captions, true_len) in enumerate(tqdm(loader, desc="Validation")):
             images = images.to(device)
             captions = captions.to(device)
             true_len = true_len.to(device)
@@ -92,11 +96,17 @@ def val_epoch(epoch, model, loader, criterion, device, beam_size=1):
             total_loss += loss.item()
             total_acc += acc.item()/batch_size
 
-    # Cada epoch, es miren les mètriques de l'últim batch del epoch
-        print(f"\n  → Fent inferència de molècules...")
-        molecule_inference(model, images, captions, epoch, device=device, beam_size=beam_size)
 
-    return total_loss / len(loader), total_acc/len(loader)
+            # Cada epoch, es miren les mètriques de l'últim batch del epoch
+            # print(f"\n  → Fent inferència de molècules...")
+            tanimoto_mean, valid_mean = molecule_inference(model, images, captions, epoch, 
+                                                           device=device, beam_size=beam_size, add_table=(idx+1)==num_batch)
+            
+            total_tanimoto_mean += tanimoto_mean
+            total_valid_mean += valid_mean
+
+
+    return total_loss / len(loader), total_acc/len(loader), total_tanimoto_mean/len(loader), total_valid_mean/len(loader)
 
 
 def train(model, train_loader, val_loader, optimizer, criterion, config, device):
@@ -106,15 +116,21 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
     for epoch in range(config.epochs):
         print(f"\n=== Epoch {epoch+1}/{config.epochs} ===")
 
-        if config.teacher_forcing:
-            if config.teacher_forcing_schedule == 'lineal': 
-                tf_ratio = max(1- np.floor(epoch/10)*0.125, 0)
+        if config.teacher_forcing:            
+            if epoch < 10: 
+                tf_ratio = 1
+            elif epoch <25: 
+                tf_ratio = 0.9
+            elif epoch < 45: 
+                tf_ratio = 0.75
+            elif epoch < 80: 
+                tf_ratio = 0.55
+            elif epoch < 150: 
+                tf_ratio = 0.35
+            elif epoch < 250: 
+                tf_ratio = 0.15
             else: 
-                if epoch < 90: 
-                    left = np.floor(epoch/10)*10+5
-                    tf_ratio = 1/(1+np.exp(0.095*(left-50)))
-                else: 
-                    tf_ratio = 0
+                tf_ratio = 0 
         else:
             # Sense Teacher Forcing: el model sempre usa el seu propi token
             tf_ratio = 0.0  
@@ -123,14 +139,17 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
             model, train_loader, optimizer, criterion, device,
             tf_ratio=tf_ratio
         )
-        val_loss, val_acc = val_epoch(epoch, model, val_loader, criterion, device,
-                                      beam_size=config.beam_size)
+
+        val_loss, val_acc, val_tanimoto_mean, val_tanimoto_valid = val_epoch(epoch, model, val_loader, 
+                                                                             criterion, device,
+                                                                             beam_size=config.beam_size)
 
         print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
         print(f"Train Acc:  {train_acc:.4f} | Val Acc:  {val_acc:.4f}")
+        print(f"Val Tanimoto Mean:  {val_tanimoto_mean:.4f} | Val Tanimoto Valid:  {val_tanimoto_valid:.4f}")
         print(f"Teacher Forcing: {tf_ratio:.2f}")
 
-        if val_loss < best_val_loss:
+        if tf_ratio==0 and val_loss < best_val_loss: #Només guarda el model amb millora val_loss quan tf_ratio=0
             best_val_loss = val_loss
             torch.save(model.state_dict(), "best_model.pth")
             print("  → Millor model guardat!")
@@ -142,6 +161,8 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
             "train_acc": train_acc,
             "val_acc": val_acc,
             "teacher_forcing_ratio": tf_ratio,
+            "val_tanimoto": val_tanimoto_mean, 
+            "val_tanimoto_valid": val_tanimoto_valid
         }, step=epoch+1)
         
 def compute_fingerprint_tanimoto(smiles_pred, smiles_true):
@@ -165,7 +186,7 @@ def compute_fingerprint_tanimoto(smiles_pred, smiles_true):
     return DataStructs.TanimotoSimilarity(fp_true, fp_pred), valid_pred
  
  
-def molecule_inference(model, images, captions, epoch, device='cuda', beam_size=1):
+def molecule_inference(model, images, captions, epoch, device='cuda', beam_size=1, add_table=False):
     """
     Genera prediccions sobre `num_samples` molècules del loader i calcula:
       - Tanimoto mitjà
@@ -196,29 +217,35 @@ def molecule_inference(model, images, captions, epoch, device='cuda', beam_size=
         tanimotos.append(tanimoto)
         valids.append(valid)
         exacts.append(exact)
- 
-    metrics = {
-        'epoch': epoch+1,
-        'mol/tanimoto_mean':  (np.mean(tanimotos)),
-        'mol/valid_pct':      (np.mean(valids)),
-        'mol/exact_match_pct': (np.mean(exacts)),
-    }
     
-    print(metrics)
+    tanimoto_mean = np.mean(tanimotos)
+    valid_mean = np.mean(valids)
 
-    table = wandb.Table(
-        columns=['epoch', 'true_smiles', 'pred_smiiles', 'tanimoto', 'valid_pred', 'exact']
-    )
+    # metrics = {
+    #     'epoch': epoch+1,
+    #     'mol/tanimoto_mean':  (np.mean(tanimotos)),
+    #     'mol/valid_pct':      (np.mean(valids)),
+    #     'mol/exact_match_pct': (np.mean(exacts)),
+    # }
     
-    for i in range(len(images)): 
-        table.add_data(epoch+1, true_smiles[i], pred_smiles[i], tanimotos[i], valids[i], exacts[i])
-        if i < 3: 
-            print(f"\n\tTRUE:\n\t{true_smiles[i]}")
-            print(f"\tPRED:\n\t{pred_smiles[i]}")
+    # print(metrics)
+    if add_table: 
+        print(f"\n  → Fent inferència de molècules del últim batch...")
+        table = wandb.Table(
+            columns=['epoch', 'true_smiles', 'pred_smiiles', 'tanimoto', 'valid_pred', 'exact']
+        )
+        
+        for i in range(len(images)): 
+            table.add_data(epoch+1, true_smiles[i], pred_smiles[i], tanimotos[i], valids[i], exacts[i])
+            if i < 3: 
+                print(f"\n\tTRUE:\n\t{true_smiles[i]}")
+                print(f"\tPRED:\n\t{pred_smiles[i]}")
 
-    wandb.log({**metrics, "mol/molecules": table}, step=epoch+1)
-    # print(f"\tTanimoto: {tanimoto}")
-    # print(f"\tValid: {valid}")
-    # print(f"\tExact match: {exact}")
-    # print(f"\tPred: {pred_smiles}")
-    # print(f"\tTrue: {true_smiles}")
+        wandb.log({"mol/molecules": table}, step=epoch+1)
+        # print(f"\tTanimoto: {tanimoto}")
+        # print(f"\tValid: {valid}")
+        # print(f"\tExact match: {exact}")
+        # print(f"\tPred: {pred_smiles}")
+        # print(f"\tTrue: {true_smiles}")
+
+    return tanimoto_mean, valid_mean

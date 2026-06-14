@@ -51,7 +51,7 @@ if __name__ == "__main__":
     group = parser.add_argument_group('cnn_options')
     parser.add_argument('--input_dim', type=int, default=224)
     parser.add_argument('--image_embed_dim', type=int, default=256)
-    parser.add_argument('--unfreeze4', action='store_true', default=False)
+    parser.add_argument('--unfreeze', default=0, choices=[0, 1, 2, 3, 4]) #0: Cap capa descongelada
     
     group = parser.add_argument_group('lstm_options')
     group.add_argument('--hidden_dim', type=int, default=512)
@@ -66,8 +66,8 @@ if __name__ == "__main__":
                         choices=['cross-entropy', 'custom-cross-entropy'])
     parser.add_argument('--label_smoothing', type=float, default=0.0)
     parser.add_argument('--teacher_forcing', action='store_true', default=False)
-    parser.add_argument('--teacher_forcing_schedule', type=str, default='lineal', 
-                        choices=['lineal', 'sigmoid'])
+    # parser.add_argument('--teacher_forcing_schedule', type=str, default='lineal', 
+    #                     choices=['lineal', 'sigmoid'])
     
     # Si passes --teacher_forcing, s'activa el decaïment
     # Si no el passes, tf=0.0 sempre

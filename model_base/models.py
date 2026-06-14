@@ -61,13 +61,13 @@ class MoleculeEncoder(nn.Module):
     Es basa en reutilitzar els pesos de models ja entrenat, només modificant l'última capa
     perquè conincideixi amb les dimensions desitjades. S'entrena només aquesta.
     """
-    def __init__(self, encoder, image_embed_dim, unfreeze4):
+    def __init__(self, encoder, image_embed_dim, unfreeze):
         """Crea el backbone del encoder i una FC per modificar l'última capa segons embed_dim.
 
         Args:
             encoder (str): nom del backbone.
             embed_dim (int): dimensió del embedding que haurà de tenir les imatges.
-            unfreeze4 (int): si es descongela o no la capa 4 dels resnet.
+            unfreeze (int): si es descongela o no la capa 4 dels resnet.
         """
         super().__init__()
         if encoder == "resnet18": 
@@ -90,11 +90,24 @@ class MoleculeEncoder(nn.Module):
                 param.requires_grad_(False)
 
             # Descongela l'últim bloc convolucional (layer4 a ResNet)
-            if unfreeze4: 
+            if unfreeze != 0: 
+                
                 for param in self.backbone.layer4.parameters():
                     param.requires_grad_(True)
 
-            # Modifica capa final
+                if unfreeze <= 3: 
+                    for param in self.backbone.layer3.parameters():
+                        param.requires_grad_(True)
+
+                    if unfreeze <= 1: 
+                        for param in self.backbone.layer2.parameters():
+                            param.requires_grad_(True)
+
+                        if unfreeze <= 1: 
+                            for param in self.backbone.layer1.parameters():
+                                param.requires_grad_(True)
+
+            # Modifica capa final sempre
             self.backbone.fc = nn.Linear(
                 self.backbone.fc.in_features, image_embed_dim
             )
@@ -164,7 +177,7 @@ class MoleculeModel(nn.Module):
     i una caption donada. 
     """
     def __init__(self, encoder, image_embed_dim, caption_embed_dim, hidden_dim,
-                 unfreeze4, vocab_size, max_len, diccionaris, dropout, num_layers=1):
+                 unfreeze, vocab_size, max_len, diccionaris, dropout, num_layers=1):
         """Crear les dues parts del model: Encoder i Decoder
 
         Args:
@@ -172,7 +185,7 @@ class MoleculeModel(nn.Module):
             image_embed_dim (_type_): dimensió del embedding de les imatges.
             caption_embed_dim (_type_): dimensió del embedding de les imatges.
             hidden_dim (_type_): dimensió hidden del LSTM.
-            unfreeze4 (bool): si es descongela la capa 4 dels resnets.
+            unfreeze (int): fins a que capa es descongela.
             vocab_size (_type_): número de caràcters únics.
             max_len (_type_): màxim longitud de SMILES trobada al dataset.
             diccionaris (_type_): diccionaris per covertir de char a idx i a l'inrevés.
@@ -185,7 +198,7 @@ class MoleculeModel(nn.Module):
         self.char2idx = diccionaris[0]
         self.idx2char = diccionaris[1]
 
-        self.encoder = MoleculeEncoder(encoder, image_embed_dim, unfreeze4)
+        self.encoder = MoleculeEncoder(encoder, image_embed_dim, unfreeze)
         self.decoder = MoleculeDecoder(vocab_size, caption_embed_dim, image_embed_dim,
                                        hidden_dim, dropout, num_layers)
 
