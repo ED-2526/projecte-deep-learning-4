@@ -89,24 +89,6 @@ class MoleculeEncoder(nn.Module):
             for param in self.backbone.parameters():
                 param.requires_grad_(False)
 
-            # Descongela l'últim bloc convolucional (layer4 a ResNet)
-            if unfreeze != 0: 
-                
-                for param in self.backbone.layer4.parameters():
-                    param.requires_grad_(True)
-
-                if unfreeze <= 3: 
-                    for param in self.backbone.layer3.parameters():
-                        param.requires_grad_(True)
-
-                    if unfreeze <= 1: 
-                        for param in self.backbone.layer2.parameters():
-                            param.requires_grad_(True)
-
-                        if unfreeze <= 1: 
-                            for param in self.backbone.layer1.parameters():
-                                param.requires_grad_(True)
-
             # Modifica capa final sempre
             self.backbone.fc = nn.Linear(
                 self.backbone.fc.in_features, image_embed_dim
@@ -203,9 +185,11 @@ class MoleculeModel(nn.Module):
                                        hidden_dim, dropout, num_layers)
 
         # Llista de paràmetres entrenables per passar al 
-        self.params_train = [param for param in self.parameters() if param.requires_grad]
+        # self.params_train = [param for param in self.parameters() if param.requires_grad]
         
-
+    def params_train(self): 
+        return [param for param in self.parameters() if param.requires_grad]
+    
     def forward(self, image, seq):
         """Dona les prediccions d'una imatge i una seqüència.
 
@@ -331,4 +315,35 @@ class MoleculeModel(nn.Module):
                 if char not in ['<PAD>', '<SOS>']:
                     text += char
             return text
+    
+    def descongelar(self, capa): 
+        """Descongela una capa de la part Encoder del model i retorna els paràmetres d'aquesta.
+
+        Args:
+            capa (int): Capa a descongelar.
+
+        Returns:
+            list: Paràmetres de la capa concreta. 
+        """
+        if capa == 4:                      
+            for param in self.encoder.backbone.layer4.parameters():
+                param.requires_grad_(True)
+            return self.encoder.backbone.layer4.parameters()
+        
+        elif capa == 3:             
+            for param in self.encoder.backbone.layer3.parameters():
+                param.requires_grad_(True)
+            return self.encoder.backbone.layer3.parameters()
+
+        elif capa == 2: 
+            for param in self.encoder.backbone.layer2.parameters():
+                param.requires_grad_(True)
+            return self.encoder.backbone.layer2.parameters()
+
+        elif capa == 1: 
+            for param in self.encoder.backbone.layer1.parameters():
+                param.requires_grad_(True)
+            return self.encoder.backbone.layer1.parameters()
+        
+        
         

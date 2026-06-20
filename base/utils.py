@@ -102,12 +102,16 @@ def make(config, device='cuda'):
                           config.hidden_dim, config.unfreeze, dataset.vocab_size, dataset.max_len, 
                           dataset.diccionaris(), config.decoder_dropout,
                           num_layers=config.num_layers).to(device)
+    
+    if config.load_model is not None: 
+        model.load_state_dict(torch.load(f"models/{config.load_model}.pth"))
+        model.descongelar()
 
     summary(model)
 
     criterion = make_criterion(config.criterion, config.label_smoothing, dataset.char2idx, device)
 
     # Només entrena els parametres amb requires_grad=True
-    optimizer = torch.optim.Adam(model.params_train, lr=config.learning_rate)
+    optimizer = torch.optim.Adam(model.params_train(), lr=config.learning_rate)
 
     return model, train_loader, val_loader, criterion, optimizer

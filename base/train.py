@@ -4,13 +4,14 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+from torchinfo import summary
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors, DataStructs
 from rdkit.Chem.rdFingerprintGenerator import GetMorganGenerator
 
 _morgan_gen = GetMorganGenerator(radius=2, fpSize=2048)
 
-def train_epoch(model, loader, optimizer, criterion, device, tf_ratio=1.0):
+def train_epoch(model, loader, optimizer, criterion, device, tf_ratio=0.0):
     model.train()
     total_loss = 0
     total_acc = 0
@@ -53,14 +54,13 @@ def train_epoch(model, loader, optimizer, criterion, device, tf_ratio=1.0):
 
         loss = criterion(output.reshape(-1, vocab_size), target.reshape(-1))
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.params_train, max_norm=5.0)
+        torch.nn.utils.clip_grad_norm_(model.params_train(), max_norm=5.0)
         optimizer.step()
 
         total_loss += loss.item()
         total_acc += acc.item() / batch_size
 
     return total_loss / len(loader), total_acc / len(loader)
-
 
 def val_epoch(epoch, model, loader, criterion, device, beam_size=1):
     model.eval()
@@ -108,7 +108,6 @@ def val_epoch(epoch, model, loader, criterion, device, beam_size=1):
 
     return total_loss / len(loader), total_acc/len(loader), total_tanimoto_mean/len(loader), total_valid_mean/len(loader)
 
-
 def train(model, train_loader, val_loader, optimizer, criterion, config, device):
     wandb.watch(model, criterion, log="all", log_freq=50)
     best_val_loss = float('inf')
@@ -121,23 +120,22 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
                 tf_ratio = 1
             elif epoch <25: 
                 tf_ratio = 0.9
-            elif epoch < 45: 
+            elif epoch < 55: 
                 tf_ratio = 0.75
-            elif epoch < 80: 
+            elif epoch < 130: 
                 tf_ratio = 0.55
-            elif epoch < 150: 
+            elif epoch < 330: 
                 tf_ratio = 0.35
-            elif epoch < 250: 
+            elif epoch < 630: 
                 tf_ratio = 0.15
             else: 
                 tf_ratio = 0 
-        else:
-            # Sense Teacher Forcing: el model sempre usa el seu propi token
-            tf_ratio = 0.0  
-
+        else: 
+            tf_ratio = 0 
+        
         train_loss, train_acc = train_epoch(
-            model, train_loader, optimizer, criterion, device,
-            tf_ratio=tf_ratio
+            model, train_loader, optimizer, 
+            criterion, device, tf_ratio=tf_ratio
         )
 
         val_loss, val_acc, val_tanimoto_mean, val_tanimoto_valid = val_epoch(epoch, model, val_loader, 
@@ -151,7 +149,71 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
 
         if tf_ratio==0 and val_loss < best_val_loss: #Només guarda el model amb millora val_loss quan tf_ratio=0
             best_val_loss = val_loss
-            torch.save(model.state_dict(), "best_model.pth")
+            torch.save(model.state_dict(), f"models/{config.name}.pth")
+            print("  → Millor model guardat!")
+
+        wandb.log({
+            "epoch": epoch + 1,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "train_acc": train_acc,
+            "val_acc": val_acc,
+            "teacher_forcing_ratio": tf_ratio,
+            "val_tanimoto": val_tanimoto_mean, 
+            "val_tanimoto_valid": val_tanimoto_valid
+        }, step=epoch+1)
+
+def train_unfreeze(model, train_loader, val_loader, optimizer, criterion, config, device):
+    wandb.watch(model, criterion, log="all", log_freq=50)
+    best_val_loss = float('inf')
+
+    for epoch in range(config.epochs):
+        print(f"\n=== Epoch {epoch+1}/{config.epochs} ===")
+
+        tf_ratio = 0.0
+                   
+        if epoch < 30: 
+            print("Només MLP")
+
+        elif epoch < 60: 
+            params = model.descongelar(4)
+            optimizer.add_param_group({'params': params})
+            print("Capa 4 Descongelada")
+
+        elif epoch < 95: 
+            params = model.descongelar(3)
+            optimizer.add_param_group({'params': params})
+            print("Capa 3 Descongelada")
+
+        elif epoch < 135: 
+            params = model.descongelar(2)
+            optimizer.add_param_group({'params': params})
+            print("Capa 2 Descongelada")
+
+        elif epoch < 180: 
+            params = model.descongelar(1)
+            optimizer.add_param_group({'params': params})
+            print("Capa 1 Descongelada")        
+
+        summary(model)
+
+        train_loss, train_acc = train_epoch(
+            model, train_loader, optimizer, 
+            criterion, device, tf_ratio=tf_ratio
+        )
+
+        val_loss, val_acc, val_tanimoto_mean, val_tanimoto_valid = val_epoch(epoch, model, val_loader, 
+                                                                             criterion, device,
+                                                                             beam_size=config.beam_size)
+
+        print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+        print(f"Train Acc:  {train_acc:.4f} | Val Acc:  {val_acc:.4f}")
+        print(f"Val Tanimoto Mean:  {val_tanimoto_mean:.4f} | Val Tanimoto Valid:  {val_tanimoto_valid:.4f}")
+        print(f"Teacher Forcing: {tf_ratio:.2f}")
+
+        if val_loss < best_val_loss: #Només guarda el model amb millora val_loss (no hi ha tf amb unfreeze)
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), f"models/{config.name}.pth")
             print("  → Millor model guardat!")
 
         wandb.log({

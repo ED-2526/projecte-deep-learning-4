@@ -7,7 +7,7 @@ import wandb
 import torch 
 import torch.nn as nn 
 
-from train import train
+from train import train, train_unfreeze
 from utils import make
 
 # Reproduïbilitat
@@ -32,7 +32,10 @@ def model_pipeline(cfg):
 
         # 2 Fer l'entrenament
         print("\n--- Iniciant entrenament ---")
-        train(model, train_loader, val_loader, optimizer, criterion, config, device=device)
+        if config.unfreeze: 
+            train_unfreeze(model, train_loader, val_loader, optimizer, criterion, config, device=device)
+        else:
+            train(model, train_loader, val_loader, optimizer, criterion, config, device=device)
         
     return model
 
@@ -44,6 +47,7 @@ if __name__ == "__main__":
     parser.add_argument('--encoder', type=str, default='resnet50', 
                         choices=['conv', 'resnet18', 'resnet50', 'resnet101'])
     parser.add_argument('--decoder', type=str, default='lstm', choices=['lstm'])
+    parser.add_argument('--load_model', default=None)
 
     group = parser.add_argument_group('embedding_options')
     parser.add_argument('--caption_embed_dim', type=int, default=256)
@@ -51,7 +55,7 @@ if __name__ == "__main__":
     group = parser.add_argument_group('cnn_options')
     parser.add_argument('--input_dim', type=int, default=224)
     parser.add_argument('--image_embed_dim', type=int, default=256)
-    parser.add_argument('--unfreeze', default=0, choices=[0, 1, 2, 3, 4]) #0: Cap capa descongelada
+    parser.add_argument('--unfreeze', action='store_true', default=False) 
     
     group = parser.add_argument_group('lstm_options')
     group.add_argument('--hidden_dim', type=int, default=512)
@@ -59,7 +63,7 @@ if __name__ == "__main__":
     group.add_argument('--num_layers', type=int, default=1)
 
     # Parametres entrenament
-    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--criterion', type=str, default='cross-entropy', 
@@ -71,6 +75,7 @@ if __name__ == "__main__":
     
     # Si passes --teacher_forcing, s'activa el decaïment
     # Si no el passes, tf=0.0 sempre
+
     parser.add_argument('--beam_size', type=int, default=1)
     # beam_size=1 és equivalent a greedy (per defecte)
 
@@ -90,7 +95,7 @@ if __name__ == "__main__":
     parser.add_argument('--name', type=str)
     parser.add_argument('--group', type=str)
     parser.add_argument('--description', default='')
-
+    
     args = parser.parse_args()
     start = time.time()
     model = model_pipeline(vars(args))
