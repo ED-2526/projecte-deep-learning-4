@@ -15,43 +15,77 @@ torch.manual_seed(42)
 from models import MoleculeModel
 
 # unfreeze = 3
-# model = MoleculeModel("resnet50", 256, 256, 512, unfreeze, vocab_size=54, max_len=367, diccionaris=(dict(), dict()), dropout=0.8, num_layers=1)
+# model = MoleculeModel("resnet50", 256, 256, 512, unfreeze=None, vocab_size=54, max_len=367, diccionaris=(dict(), dict()), dropout=0.8, num_layers=1)
+# summary(model)
+# print(model)
 
+x = torch.rand(1, 3, 224, 224)
+target = torch.tensor([20]) #860
+# y = model(x)
+# y_prima = torch.argmax(y, dim=1)
 
-# x = torch.rand(1, 3, 224, 224)
-# target = torch.tensor([860])
-# # y = model(x)
-# # y_prima = torch.argmax(y, dim=1)
+criterion = nn.CrossEntropyLoss()
 
-# criterion = nn.CrossEntropyLoss()
+model = models.resnet50()
 
-# optimizer = torch.optim.Adam(model.conv1.parameters())
-# optimizer.add_param_group({'params': model.bn1.parameters()})
-# optimizer.add_param_group({'params': model.layer1.parameters()})
-# optimizer.add_param_group({'params': model.layer2.parameters()})
-# optimizer.add_param_group({'params': model.layer3.parameters()})
-# optimizer.add_param_group({'params': model.layer4.parameters()})
-# optimizer.add_param_group({'params': model.fc.parameters()})
+for param in model.parameters():
+    param.requires_grad_(False)
+
+for param in model.fc.parameters():
+    param.requires_grad_(True)
+
+# params_train = [param for param in model.parameters() if param.requires_grad]
+
+# optimizer = torch.optim.Adam(params_train)
+# # optimizer.add_param_group({'params': model.bn1.parameters()})
+# # optimizer.add_param_group({'params': model.layer1.parameters()})
+# # optimizer.add_param_group({'params': model.layer2.parameters()})
+# # optimizer.add_param_group({'params': model.layer3.parameters()})
+# # optimizer.add_param_group({'params': model.fc.parameters()})
 
 # # optimizer = torch.optim.Adam(model.parameters())
+# summary(model)
+# for epoch in range(10):
+#     if epoch == 0: 
+#         print("MLP")
 
-# for i in range(5): 
-#     y = model(x)
-#     loss = criterion(y, target)
-#     optimizer.zero_grad()
-#     loss.backward()
-#     optimizer.step()
+#     elif epoch == 2: 
+#         print("4")
+#         for param in model.layer4.parameters():
+#             param.requires_grad_(True)
+#         optimizer.add_param_group({'params': model.layer4.parameters()})
+#         summary(model)
+        
+#     elif epoch == 4: 
+#         print("3")
+#         for param in model.layer3.parameters():
+#             param.requires_grad_(True)
+#         optimizer.add_param_group({'params': model.layer3.parameters()})
+#         summary(model)
+#     elif epoch == 6: 
+#         print("2")
+#         for param in model.layer2.parameters():
+#             param.requires_grad_(True)
+#         optimizer.add_param_group({'params': model.layer2.parameters()})
+#         summary(model)
+#     elif epoch == 8: 
+#         print("1")
+#         for param in model.layer1.parameters():
+#             param.requires_grad_(True)
+#         optimizer.add_param_group({'params': model.layer1.parameters()})
+#         summary(model)
 
-#     print(loss)
+#     for i in range(1): 
+#         y = model(x)
+#         loss = criterion(y, target)
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+#         print(loss)
+
+# summary(model)
 # model = torch.load(f"{a}.pth")
 
-def test(a): 
-    print("TEST")
-    return a
-
-test(20)
-
-# model = models.resnet18()
 # for i, (name, layer) in enumerate(model.named_children()): 
 #     print(i, name)
 # a = "states/resnet50+unfreeze"
@@ -59,8 +93,6 @@ test(20)
 # #     param.requires_grad_(False)
 # torch.save(model.state_dict(), f"{a}.pth")
 
-# summary(model)
-# print(model)
 
 # for param in model.parameters(): 
 #     param.requires_grad_(False)

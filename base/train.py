@@ -122,11 +122,11 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
                 tf_ratio = 0.9
             elif epoch < 55: 
                 tf_ratio = 0.75
-            elif epoch < 130: 
+            elif epoch < 135: 
                 tf_ratio = 0.55
-            elif epoch < 330: 
+            elif epoch < 335: 
                 tf_ratio = 0.35
-            elif epoch < 630: 
+            elif epoch < 635: 
                 tf_ratio = 0.15
             else: 
                 tf_ratio = 0 
@@ -149,7 +149,7 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
 
         if tf_ratio==0 and val_loss < best_val_loss: #Només guarda el model amb millora val_loss quan tf_ratio=0
             best_val_loss = val_loss
-            torch.save(model.state_dict(), f"models/{config.name}.pth")
+            torch.save(model.state_dict(), f"run_models/{config.name}.pth")
             print("  → Millor model guardat!")
 
         wandb.log({
@@ -172,30 +172,33 @@ def train_unfreeze(model, train_loader, val_loader, optimizer, criterion, config
 
         tf_ratio = 0.0
                    
-        if epoch < 30: 
+        if epoch == 0:
             print("Només MLP")
 
-        elif epoch < 60: 
+        elif epoch == 30: 
             params = model.descongelar(4)
             optimizer.add_param_group({'params': params})
-            print("Capa 4 Descongelada")
+            
+            summary(model)
 
-        elif epoch < 95: 
+        elif epoch == 60: 
             params = model.descongelar(3)
             optimizer.add_param_group({'params': params})
-            print("Capa 3 Descongelada")
+            
+            summary(model)
+            summary(model)
 
-        elif epoch < 135: 
+        elif epoch == 95: 
             params = model.descongelar(2)
             optimizer.add_param_group({'params': params})
-            print("Capa 2 Descongelada")
+            
+            summary(model)
 
-        elif epoch < 180: 
+        elif epoch == 135: #135: 
             params = model.descongelar(1)
             optimizer.add_param_group({'params': params})
-            print("Capa 1 Descongelada")        
-
-        summary(model)
+                   
+            summary(model)
 
         train_loss, train_acc = train_epoch(
             model, train_loader, optimizer, 
@@ -213,7 +216,7 @@ def train_unfreeze(model, train_loader, val_loader, optimizer, criterion, config
 
         if val_loss < best_val_loss: #Només guarda el model amb millora val_loss (no hi ha tf amb unfreeze)
             best_val_loss = val_loss
-            torch.save(model.state_dict(), f"models/{config.name}.pth")
+            torch.save(model.state_dict(), f"run_models/{config.name}.pth")
             print("  → Millor model guardat!")
 
         wandb.log({

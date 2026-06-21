@@ -104,8 +104,10 @@ def make(config, device='cuda'):
                           num_layers=config.num_layers).to(device)
     
     if config.load_model is not None: 
-        model.load_state_dict(torch.load(f"models/{config.load_model}.pth"))
-        model.descongelar()
+        print(f"\nCarregant paràmetres del model: {config.load_model}\n")
+        model.load_state_dict(torch.load(f"run_models/{config.load_model}.pth"))
+        model.descongelar(4)
+        # model.descongelar(3)
 
     summary(model)
 

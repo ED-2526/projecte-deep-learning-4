@@ -325,6 +325,9 @@ class MoleculeModel(nn.Module):
         Returns:
             list: Paràmetres de la capa concreta. 
         """
+
+        print(f"Capa {capa} Descongelada")
+        
         if capa == 4:                      
             for param in self.encoder.backbone.layer4.parameters():
                 param.requires_grad_(True)
