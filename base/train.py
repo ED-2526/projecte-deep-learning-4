@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torchinfo import summary
+from torchmetrics.functional.text import edit_distance
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors, DataStructs
 from rdkit.Chem.rdFingerprintGenerator import GetMorganGenerator
@@ -67,8 +68,9 @@ def val_epoch(epoch, model, loader, criterion, device, beam_size=1):
 
     total_loss = 0
     total_acc = 0
-    total_tanimoto_mean = 0
-    total_valid_mean = 0
+    total_edit_distance_mean = 0
+    # total_tanimoto_mean = 0
+    # total_valid_mean = 0
 
     num_batch = len(loader)
 
@@ -99,14 +101,19 @@ def val_epoch(epoch, model, loader, criterion, device, beam_size=1):
 
             # Cada epoch, es miren les mètriques de l'últim batch del epoch
             # print(f"\n  → Fent inferència de molècules...")
-            tanimoto_mean, valid_mean = molecule_inference(model, images, captions, epoch, 
+            edit_distance_mean = molecule_inference(model, images, captions, epoch, 
                                                            device=device, beam_size=beam_size, add_table=(idx+1)==num_batch)
+            # tanimoto_mean, valid_mean, edit_distance_mean = molecule_inference(model, images, captions, epoch, 
+            #                                                device=device, beam_size=beam_size, add_table=(idx+1)==num_batch)
             
-            total_tanimoto_mean += tanimoto_mean
-            total_valid_mean += valid_mean
+            # total_tanimoto_mean += tanimoto_mean
+            # total_valid_mean += valid_mean
+            total_edit_distance_mean += edit_distance_mean
 
 
-    return total_loss / len(loader), total_acc/len(loader), total_tanimoto_mean/len(loader), total_valid_mean/len(loader)
+    # return total_loss/len(loader), total_acc/len(loader), total_tanimoto_mean/len(loader), \
+    #     total_valid_mean/len(loader), total_edit_distance_mean/len(loader)
+    return total_loss/len(loader), total_acc/len(loader), total_edit_distance_mean/len(loader)
 
 def train(model, train_loader, val_loader, optimizer, criterion, config, device):
     wandb.watch(model, criterion, log="all", log_freq=50)
@@ -138,13 +145,14 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
             criterion, device, tf_ratio=tf_ratio
         )
 
-        val_loss, val_acc, val_tanimoto_mean, val_tanimoto_valid = val_epoch(epoch, model, val_loader, 
-                                                                             criterion, device,
-                                                                             beam_size=config.beam_size)
+        val_loss, val_acc, val_edit_distance_mean  = val_epoch(epoch, model, val_loader, 
+                                                                criterion, device,
+                                                                beam_size=config.beam_size)
 
         print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
         print(f"Train Acc:  {train_acc:.4f} | Val Acc:  {val_acc:.4f}")
-        print(f"Val Tanimoto Mean:  {val_tanimoto_mean:.4f} | Val Tanimoto Valid:  {val_tanimoto_valid:.4f}")
+        # print(f"Val Tanimoto Mean:  {val_tanimoto_mean:.4f} | Val Tanimoto Valid:  {val_tanimoto_valid:.4f}")
+        print(f"Edit_distance Mean: {val_edit_distance_mean:.4f}")
         print(f"Teacher Forcing: {tf_ratio:.2f}")
 
         if tf_ratio==0 and val_loss < best_val_loss: #Només guarda el model amb millora val_loss quan tf_ratio=0
@@ -159,8 +167,9 @@ def train(model, train_loader, val_loader, optimizer, criterion, config, device)
             "train_acc": train_acc,
             "val_acc": val_acc,
             "teacher_forcing_ratio": tf_ratio,
-            "val_tanimoto": val_tanimoto_mean, 
-            "val_tanimoto_valid": val_tanimoto_valid
+            # "val_tanimoto": val_tanimoto_mean, 
+            # "val_tanimoto_valid": val_tanimoto_valid,
+            "val_edit_distance_mean": val_edit_distance_mean
         }, step=epoch+1)
 
 def train_unfreeze(model, train_loader, val_loader, optimizer, criterion, config, device):
@@ -205,13 +214,17 @@ def train_unfreeze(model, train_loader, val_loader, optimizer, criterion, config
             criterion, device, tf_ratio=tf_ratio
         )
 
-        val_loss, val_acc, val_tanimoto_mean, val_tanimoto_valid = val_epoch(epoch, model, val_loader, 
-                                                                             criterion, device,
-                                                                             beam_size=config.beam_size)
+        val_loss, val_acc, val_edit_distance_mean = val_epoch(epoch, model, val_loader, 
+                                                                criterion, device,
+                                                                beam_size=config.beam_size)
+        # val_loss, val_acc, val_tanimoto_mean, val_tanimoto_valid, val_edit_distance_mean = val_epoch(epoch, model, val_loader, 
+        #                                                                      criterion, device,
+        #                                                                      beam_size=config.beam_size)
 
         print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
         print(f"Train Acc:  {train_acc:.4f} | Val Acc:  {val_acc:.4f}")
-        print(f"Val Tanimoto Mean:  {val_tanimoto_mean:.4f} | Val Tanimoto Valid:  {val_tanimoto_valid:.4f}")
+        # print(f"Val Tanimoto Mean:  {val_tanimoto_mean:.4f} | Val Tanimoto Valid:  {val_tanimoto_valid:.4f}")
+        print(f"Edit_distance Mean: {val_edit_distance_mean:.4f}")
         print(f"Teacher Forcing: {tf_ratio:.2f}")
 
         if val_loss < best_val_loss: #Només guarda el model amb millora val_loss (no hi ha tf amb unfreeze)
@@ -226,8 +239,9 @@ def train_unfreeze(model, train_loader, val_loader, optimizer, criterion, config
             "train_acc": train_acc,
             "val_acc": val_acc,
             "teacher_forcing_ratio": tf_ratio,
-            "val_tanimoto": val_tanimoto_mean, 
-            "val_tanimoto_valid": val_tanimoto_valid
+            # "val_tanimoto": val_tanimoto_mean, 
+            # "val_tanimoto_valid": val_tanimoto_valid, 
+            "val_edit_distance_mean": val_edit_distance_mean
         }, step=epoch+1)
         
 def compute_fingerprint_tanimoto(smiles_pred, smiles_true):
@@ -271,20 +285,23 @@ def molecule_inference(model, images, captions, epoch, device='cuda', beam_size=
     # Reconstruir el SMILES real des dels tokens
     true_smiles = [model.generate_smiles(caption) for caption in captions]
     
-    tanimotos = []
-    valids = []
-    exacts = []    
+    edit_dist = edit_distance(pred_smiles, true_smiles, reduction=None).float()
+    # tanimotos = []
+    # valids = []
+    # exacts = []    
 
-    for pred_smiles_exemple, true_smiles_exemple in zip(pred_smiles, true_smiles): 
-        tanimoto, valid = compute_fingerprint_tanimoto(pred_smiles_exemple, true_smiles_exemple)
-        exact = (pred_smiles_exemple == true_smiles_exemple)
 
-        tanimotos.append(tanimoto)
-        valids.append(valid)
-        exacts.append(exact)
+    # for pred_smiles_exemple, true_smiles_exemple in zip(pred_smiles, true_smiles): 
+    #     tanimoto, valid = compute_fingerprint_tanimoto(pred_smiles_exemple, true_smiles_exemple)
+    #     exact = (pred_smiles_exemple == true_smiles_exemple)
+
+    #     tanimotos.append(tanimoto)
+    #     valids.append(valid)
+    #     exacts.append(exact)
     
-    tanimoto_mean = np.mean(tanimotos)
-    valid_mean = np.mean(valids)
+    edit_distance_mean = torch.mean(edit_dist)
+    # tanimoto_mean = np.mean(tanimotos)
+    # valid_mean = np.mean(valids)
 
     # metrics = {
     #     'epoch': epoch+1,
@@ -295,13 +312,26 @@ def molecule_inference(model, images, captions, epoch, device='cuda', beam_size=
     
     # print(metrics)
     if add_table: 
-        print(f"\n  → Fent inferència de molècules del últim batch...")
+
+        tanimotos = []
+        valids = []
+        exacts = []    
+
+        for pred_smiles_exemple, true_smiles_exemple in zip(pred_smiles, true_smiles): 
+            tanimoto, valid = compute_fingerprint_tanimoto(pred_smiles_exemple, true_smiles_exemple)
+            exact = (pred_smiles_exemple == true_smiles_exemple)
+
+            tanimotos.append(tanimoto)
+            valids.append(valid)
+            exacts.append(exact)
+
+        print(f"\n  → Fent inferència tanimoto de molècules del últim batch")
         table = wandb.Table(
-            columns=['epoch', 'true_smiles', 'pred_smiiles', 'tanimoto', 'valid_pred', 'exact']
+            columns=['epoch', 'true_smiles', 'pred_smiiles', 'edit_distance', 'tanimoto', 'valid_pred', 'exact', ]
         )
         
         for i in range(len(images)): 
-            table.add_data(epoch+1, true_smiles[i], pred_smiles[i], tanimotos[i], valids[i], exacts[i])
+            table.add_data(epoch+1, true_smiles[i], pred_smiles[i], edit_dist[i].item(), tanimotos[i], valids[i], exacts[i])
             if i < 3: 
                 print(f"\n\tTRUE:\n\t{true_smiles[i]}")
                 print(f"\tPRED:\n\t{pred_smiles[i]}")
@@ -313,4 +343,5 @@ def molecule_inference(model, images, captions, epoch, device='cuda', beam_size=
         # print(f"\tPred: {pred_smiles}")
         # print(f"\tTrue: {true_smiles}")
 
-    return tanimoto_mean, valid_mean
+    # return tanimoto_mean, valid_mean, edit_distance_mean
+    return edit_distance_mean

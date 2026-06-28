@@ -98,18 +98,24 @@ def make(config, device='cuda'):
                               max_smiles_len=config.max_smiles_len)
     train_loader, val_loader = make_loaders(dataset, config.batch_size, config.train_percentage)
     
-    model = MoleculeModel(config.encoder, config.image_embed_dim, config.image_embed_dim,
+    model = MoleculeModel(config.encoder, config.hidden_dim, config.caption_embed_dim,
                           config.hidden_dim, config.unfreeze, dataset.vocab_size, dataset.max_len, 
                           dataset.diccionaris(), config.decoder_dropout,
                           num_layers=config.num_layers).to(device)
     
+
     if config.load_model is not None: 
         print(f"\nCarregant paràmetres del model: {config.load_model}\n")
         model.load_state_dict(torch.load(f"run_models/{config.load_model}.pth"))
         model.descongelar(4)
         # model.descongelar(3)
 
+    if config.parcial_unfreeze: 
+        model.descongelar(4)
+
     summary(model)
+    print()
+    print(model)
 
     criterion = make_criterion(config.criterion, config.label_smoothing, dataset.char2idx, device)
 

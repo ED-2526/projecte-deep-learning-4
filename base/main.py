@@ -50,12 +50,13 @@ if __name__ == "__main__":
     parser.add_argument('--load_model', default=None)
 
     group = parser.add_argument_group('embedding_options')
-    parser.add_argument('--caption_embed_dim', type=int, default=256)
+    parser.add_argument('--caption_embed_dim', type=int, default=512)
 
     group = parser.add_argument_group('cnn_options')
     parser.add_argument('--input_dim', type=int, default=224)
-    parser.add_argument('--image_embed_dim', type=int, default=256)
+    parser.add_argument('--image_embed_dim', type=int, default=512) #same hidden_dim
     parser.add_argument('--unfreeze', action='store_true', default=False) 
+    parser.add_argument('--parcial_unfreeze', action='store_true', default=False) 
     
     group = parser.add_argument_group('lstm_options')
     group.add_argument('--hidden_dim', type=int, default=512)
@@ -64,7 +65,7 @@ if __name__ == "__main__":
 
     # Parametres entrenament
     parser.add_argument('--epochs', type=int, default=10)
-    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--criterion', type=str, default='cross-entropy', 
                         choices=['cross-entropy', 'custom-cross-entropy'])
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     parser.add_argument('--description', default='')
     
     args = parser.parse_args()
-    start = time.time()
+    # start = time.time()
     model = model_pipeline(vars(args))
-    end = time.time()
-    print(f"\nTemps d'execució: {(end-start)/60} minuts")
+    # end = time.time()
+    # print(f"\nTemps d'execució: {(end-start)/60} minuts")
